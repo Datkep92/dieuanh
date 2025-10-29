@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Quản lý tồn kho từ Excel</title>
+
+  <!-- ✅ Thư viện đọc Excel (SheetJS) -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+  <!-- ✅ Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import { getDatabase } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-analytics.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyACEtedbOCqJIUR4FeWLn7uuxoJBj7qgSw",
+      authDomain: "dieuanh-fbcee.firebaseapp.com",
+      databaseURL: "https://dieuanh-fbcee-default-rtdb.firebaseio.com",
+      projectId: "dieuanh-fbcee",
+      storageBucket: "dieuanh-fbcee.firebasestorage.app",
+      messagingSenderId: "861273121859",
+      appId: "1:861273121859:web:04a26a3054c4c4f8d720f6",
+      measurementId: "G-HT0VECDWC9"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    window.db = getDatabase(app);
+    window.firebaseReady = true;
+  </script>
+
+  <!-- ✅ CSS tách riêng -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ========== HEADER ========== -->
+  <header>
+    <input id="excelInput" type="file" accept=".xlsx,.xls" multiple>
+    <button id="clearBtn" title="Xóa toàn bộ dữ liệu">🗑️ Xóa dữ liệu</button>
+    <button id="xuatBtn">🚚 Xuất hàng</button>
+    <button id="viewPhieu">📋 Danh sách nhận</button>
+
+    <div style="margin-left:auto;color:#fff;font-weight:600">
+      Quản lý tồn kho của Diệu Ánh
+    </div>
+  </header>
+
+  <!-- ========== MAIN ========== -->
+  <main>
+    <div id="left">
+      <h3>Danh sách phiếu nhập kho</h3>
+      <div id="codes"></div>
+    </div>
+
+    <div id="center">
+      <h3>Bảng tồn kho tổng hợp</h3>
+      <table id="stockTable">
+        <thead>
+          <tr>
+            <th style="width:48px">STT</th>
+            <th>Tên vật tư</th>
+            <th style="width:80px">ĐVT</th>
+            <th class="num" style="width:120px">SL tồn</th>
+            <th class="num" style="width:120px">Đơn giá</th>
+            <th class="num" style="width:140px">Thành tiền</th>
+            <th style="width:60px"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- ========== POPUP CHI TIẾT PHIẾU ========== -->
+  <div id="popup">
+    <header>
+      <div>Chi tiết phiếu xuất</div>
+      <div id="closePopup">✖</div>
+    </header>
+    <div class="body">
+      <div id="popupHeader" class="muted"></div>
+      <table id="popupTable">
+        <thead>
+          <tr>
+            <th style="width:48px">STT</th>
+            <th>Tên vật tư</th>
+            <th style="width:80px">ĐVT</th>
+            <th class="num" style="width:120px">SL yêu cầu</th>
+            <th class="num" style="width:120px">SL thực phát</th>
+            <th class="num" style="width:120px">Đơn giá</th>
+            <th class="num" style="width:140px">Thành tiền</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ========== POPUP XUẤT HÀNG ========== -->
+  <div id="xuatPopup" class="popup">
+    <header>🚚 Xuất hàng <span id="closeXuat">✖</span></header>
+    <div class="body">
+      <div class="form-row">
+        <label>Phòng/Ban:</label>
+        <select id="chonPhong"></select>
+        <button id="themPhong">➕</button>
+      </div>
+      <div class="form-row">
+        <label>Người nhận:</label>
+        <input id="tenNhanVien" list="suggestTen">
+        <datalist id="suggestTen"></datalist>
+        <button id="themTen">➕</button>
+      </div>
+
+      <table id="xuatTable">
+        <thead>
+          <tr>
+            <th>STT</th>
+            <th>Tên vật tư</th>
+            <th>ĐVT</th>
+            <th>SL tồn</th>
+            <th>SL xuất</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <button id="confirmXuat" class="main-btn">🚚 Xác nhận xuất hàng</button>
+    </div>
+  </div>
+
+  <!-- ✅ JS -->
+  <script type="module" src="script.js"></script>
+</body>
+</html>
