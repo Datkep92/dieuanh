@@ -626,27 +626,46 @@ if (manualStock && typeof manualStock === 'object') {
       warningsContainer.style.display = 'block';
     }
 
-    // ---------- Show invoice detail popup ----------
-    function showInvoiceDetail(code) {
-      const inv = allData[code];
-      if (!inv) return;
-      popupDetailHeader.innerHTML = `Mã xuất: <strong>${esc(code)}</strong>${inv.date ? ` &nbsp; | &nbsp; <b>Ngày:</b> ${esc(inv.date)}` : ''}`;
-      popupDetailTable.innerHTML = '';
-      (inv.items || []).forEach((it, idx) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${idx+1}</td>
-          <td>${esc(it.name)}</td>
-          <td>${esc(it.unit)}</td>
-          <td class="num">${it.qtyReq}</td>
-          <td class="num">${it.qtyReal}</td>
-          <td class="num">${it.price}</td>
-          <td class="num">${(Number(it.qtyReal) * Number(it.price)).toLocaleString('vi-VN')}</td>
-        `;
-        popupDetailTable.appendChild(tr);
-      });
-      popupDetail.style.display = 'block';
-    }
+ // ---------- POPUP DETAIL FUNCTIONS ----------
+
+// Sửa hàm showInvoiceDetail
+function showInvoiceDetail(code) {
+  const inv = allData[code];
+  if (!inv) return;
+  
+  popupDetailHeader.innerHTML = `Mã xuất: <strong>${esc(code)}</strong>${inv.date ? ` &nbsp; | &nbsp; <b>Ngày:</b> ${esc(inv.date)}` : ''}`;
+  popupDetailTable.innerHTML = '';
+  (inv.items || []).forEach((it, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${idx+1}</td>
+      <td>${esc(it.name)}</td>
+      <td>${esc(it.unit)}</td>
+      <td class="num">${it.qtyReq}</td>
+      <td class="num">${it.qtyReal}</td>
+      <td class="num">${it.price}</td>
+      <td class="num">${(Number(it.qtyReal) * Number(it.price)).toLocaleString('vi-VN')}</td>
+    `;
+    popupDetailTable.appendChild(tr);
+  });
+  popupDetail.style.display = 'block';
+  
+  // Đảm bảo nút đóng hoạt động
+  setupClosePopupBtn();
+}
+
+// Hàm thiết lập nút đóng popup chi tiết
+function setupClosePopupBtn() {
+  // Remove event listener cũ nếu có
+  closePopupBtn.replaceWith(closePopupBtn.cloneNode(true));
+  const newCloseBtn = document.getElementById('closePopup');
+  
+  // Thêm event listener mới
+  newCloseBtn.addEventListener('click', () => {
+    console.log('Close popup button clicked');
+    popupDetail.style.display = 'none';
+  });
+}
 
     // ---------- Excel reading (SheetJS must be loaded) ----------
     excelInput.addEventListener('change', async (ev) => {
