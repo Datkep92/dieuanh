@@ -1756,3 +1756,226 @@ input:focus, select:focus {
     padding: 4px 5px;
   }
 }
+
+/* ========== STYLE CHO Ô TÌM KIẾM ========== */
+.search-box {
+  margin: 12px 0;
+  position: relative;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 10px 40px 10px 12px;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  background-color: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(74, 144, 226, 0.2);
+}
+
+.search-box input::placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Icon tìm kiếm */
+.search-box::after {
+  content: "🔍";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  color: #6b7280;
+  pointer-events: none;
+}
+
+/* Hiệu ứng hover */
+.search-box input:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* Style cho kết quả tìm kiếm */
+.no-results {
+  background-color: #fef2f2 !important;
+  color: #dc2626 !important;
+  font-style: italic;
+}
+
+.no-results strong {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+/* Highlight kết quả tìm kiếm */
+.highlight {
+  background-color: #fff3cd;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* ========== STYLE CHO BẢNG SAU KHI TÌM KIẾM ========== */
+/* Ẩn hàng không khớp */
+#stockTable tbody tr[style*="display: none"],
+#xuatTable tbody tr[style*="display: none"] {
+  display: none !important;
+}
+
+/* Hiệu ứng cho hàng hiển thị */
+#stockTable tbody tr:not([style*="display: none"]),
+#xuatTable tbody tr:not([style*="display: none"]) {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0.7; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Counter cho kết quả tìm kiếm */
+.search-results-counter {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+  text-align: right;
+  font-style: italic;
+}
+
+/* ========== STYLE RIÊNG CHO TÌM KIẾM XUẤT HÀNG ========== */
+#xuatPopup .search-box {
+  margin: 16px 0;
+}
+
+#xuatPopup .search-box input {
+  background-color: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+#xuatPopup .search-box input:focus {
+  background-color: white;
+  border-color: var(--primary);
+}
+
+/* ========== STYLE RIÊNG CHO TÌM KIẾM TỒN KHO ========== */
+#center .search-box {
+  margin: 0 0 16px 0;
+}
+
+#center .search-box input {
+  background-color: white;
+  border-color: #e5e7eb;
+}
+
+/* ========== RESPONSIVE CHO TÌM KIẾM ========== */
+@media (max-width: 768px) {
+  .search-box input {
+    padding: 12px 40px 12px 16px;
+    font-size: 16px; /* Tránh zoom trên iOS */
+  }
+  
+  .search-box::after {
+    right: 16px;
+    font-size: 18px;
+  }
+  
+  #center .search-box,
+  #xuatPopup .search-box {
+    margin: 12px 0;
+  }
+}
+
+/* ========== STYLE CHO TRẠNG THÁI TÌM KIẾM ========== */
+.search-active {
+  position: relative;
+}
+
+.search-active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--primary), #60a5fa);
+  border-radius: 2px;
+}
+
+/* ========== CLEAR BUTTON CHO TÌM KIẾM ========== */
+.search-box.with-clear {
+  position: relative;
+}
+
+.search-clear {
+  position: absolute;
+  right: 35px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  display: none;
+}
+
+.search-clear:hover {
+  color: #6b7280;
+  background-color: #f3f4f6;
+}
+
+.search-box input:not(:placeholder-shown) + .search-clear {
+  display: block;
+}
+
+/* ========== ANIMATION CHO KẾT QUẢ TÌM KIẾM ========== */
+.search-highlight {
+  background-color: #fffbeb;
+  border-left: 3px solid #f59e0b;
+  transition: all 0.3s ease;
+}
+
+/* ========== STYLE CHO PLACEHOLDER ĐẶC BIỆT ========== */
+#searchStock::placeholder {
+  color: #4b5563;
+  font-weight: 500;
+}
+
+#searchXuat::placeholder {
+  color: #4b5563;
+  font-weight: 500;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .search-box input {
+    background-color: #374151;
+    border-color: #4b5563;
+    color: white;
+  }
+  
+  .search-box input::placeholder {
+    color: #9ca3af;
+  }
+  
+  .search-box input:focus {
+    background-color: #4b5563;
+    border-color: var(--primary);
+  }
+  
+  .no-results {
+    background-color: #7f1d1d !important;
+    color: #fca5a5 !important;
+  }
+}

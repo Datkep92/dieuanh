@@ -568,69 +568,7 @@ if (manualStock && typeof manualStock === 'object') {
       }
     });
 
-    // ---------- THÊM EVENT LISTENER CHO XÁC NHẬN XUẤT HÀNG ----------
-    confirmXuatBtn.addEventListener('click', async () => {
-      const phong = chonPhong.value;
-      const nguoi = tenNhanInput.value.trim();
-      
-      if (!phong || !nguoi) {
-        alert('Vui lòng chọn phòng và người nhận.');
-        return;
-      }
 
-      const items = [];
-      const updates = {};
-      
-      // Thu thập danh sách xuất kho
-      xuatTableBody.querySelectorAll('tr').forEach(tr => {
-        const inp = tr.querySelector('.slxuat');
-        const qty = Number(inp.value) || 0;
-        if (qty > 0) {
-          const name = inp.dataset.name;
-          const unit = inp.dataset.unit;
-          items.push({ name, unit, qty });
-          
-          // Tính toán tồn kho mới
-          const key = `${name}___${unit}`;
-          const currentStock = getCurrentStockMap()[key];
-          if (currentStock) {
-            const newQty = Math.max(0, currentStock.qtyReal - qty);
-            updates[key] = {
-              ...currentStock,
-              qtyReal: newQty,
-              amount: newQty * currentStock.price
-            };
-          }
-        }
-      });
-
-      if (items.length === 0) {
-        alert('Vui lòng nhập số lượng xuất ít nhất một mặt hàng.');
-        return;
-      }
-
-      // Cập nhật tồn kho
-      Object.keys(updates).forEach(key => {
-        manualStock[key] = updates[key];
-      });
-      await saveToFirebase(PATH.MANUAL, manualStock);
-
-      // Lưu lịch sử xuất hàng
-      const now = new Date();
-      const ngay = now.toLocaleDateString('vi-VN');
-      const ngayISO = now.toISOString();
-      const historyItem = { phong, nguoi, danhSach: items, ngay, ngayISO };
-
-      let allHistory = await loadFromFirebase(PATH.HISTORY, []);
-      if (!Array.isArray(allHistory)) allHistory = [];
-      allHistory.push(historyItem);
-      await saveToFirebase(PATH.HISTORY, allHistory);
-
-      alert('Xuất hàng thành công!');
-      xuatPopup.style.display = 'none';
-      renderStock();
-      renderStockWarnings();
-    });
 
     // ---------- STOCK WARNING FUNCTIONS ----------
     function renderStockWarnings() {
@@ -787,25 +725,7 @@ if (manualStock && typeof manualStock === 'object') {
       renderStock();
     });
 
-    // Close popups
-    closePopupBtn.addEventListener('click', () => popupDetail.style.display = 'none');
-    closeXuatBtn.addEventListener('click', () => xuatPopup.style.display = 'none');
 
-    // ESC key close
-    document.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Escape') {
-        if (popupDetail.style.display === 'block') popupDetail.style.display = 'none';
-        if (xuatPopup.style.display === 'block') xuatPopup.style.display = 'none';
-      }
-    });
-
-    // ---------- Phòng ban & tên nhân viên helpers ----------
-    async function loadPhongVaTen() {
-      const phong = await loadFromFirebase(PATH.PHONG, []);
-      chonPhong.innerHTML = Array.isArray(phong) ? phong.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('') : '';
-      const tenList = await loadFromFirebase(PATH.TEN, []);
-      suggestTen.innerHTML = Array.isArray(tenList) ? tenList.map(t => `<option value="${esc(t)}">`).join('') : '';
-    }
 
     async function addPhong(val) {
       const list = await loadFromFirebase(PATH.PHONG, []);
@@ -817,59 +737,234 @@ if (manualStock && typeof manualStock === 'object') {
       }
     }
 
-    async function addTen(val) {
-      const list = await loadFromFirebase(PATH.TEN, []);
-      if (!Array.isArray(list)) return;
-      if (!list.includes(val)) {
-        list.push(val);
-        await saveToFirebase(PATH.TEN, list);
-        loadPhongVaTen();
-      }
-    }
-
     themPhongBtn.addEventListener('click', async () => {
       const val = prompt('Nhập tên phòng/ban:');
       if (!val) return;
       await addPhong(val.trim());
     });
 
-    themTenBtn.addEventListener('click', async () => {
-      const val = prompt('Nhập tên người nhận:');
-      if (!val) return;
-      await addTen(val.trim());
+
+
+// ---------- XÁC NHẬN XUẤT HÀNG (ĐÃ SỬA: TRÁNH TRÙNG LẶP) ----------
+let isProcessingXuat = false; // Biến cờ để tránh xử lý trùng lặp
+
+confirmXuatBtn.addEventListener('click', async () => {
+  // Kiểm tra tránh xử lý trùng lặp
+  if (isProcessingXuat) {
+    console.log('Đang xử lý xuất hàng, vui lòng chờ...');
+    return;
+  }
+  
+  isProcessingXuat = true;
+  
+  try {
+    const phong = chonPhong.value;
+    const nguoi = tenNhanVien.value.trim();
+    
+    if (!phong || !nguoi) {
+      alert('Vui lòng chọn phòng và người nhận.');
+      isProcessingXuat = false;
+      return;
+    }
+
+    const items = [];
+    const updates = {};
+    
+    // Thu thập danh sách xuất kho - CHỈ LẤY HÀNG CÓ SL > 0
+    xuatTableBody.querySelectorAll('tr').forEach(tr => {
+      if (tr.style.display !== 'none') { // Chỉ xét hàng đang hiển thị
+        const inp = tr.querySelector('.slxuat');
+        const qty = Number(inp.value) || 0;
+        if (qty > 0) {
+          const name = inp.dataset.name;
+          const unit = inp.dataset.unit;
+          items.push({ name, unit, qty });
+          
+          // Tính toán tồn kho mới
+          const key = `${name}___${unit}`;
+          const currentStock = getCurrentStockMap()[key];
+          if (currentStock) {
+            const newQty = Math.max(0, currentStock.qtyReal - qty);
+            updates[key] = {
+              ...currentStock,
+              qtyReal: newQty,
+              amount: newQty * currentStock.price
+            };
+          }
+        }
+      }
     });
 
-    xuatBtn.addEventListener('click', async () => {
-      console.log('Nút xuất hàng được click'); // Thêm dòng này để debug
-      
-      await loadPhongVaTen();
-      // populate table - CHỈ lấy hàng còn tồn kho
-      const map = getCurrentStockMap();
-      xuatTableBody.innerHTML = '';
-      
-      // Lọc chỉ những hàng còn tồn kho (qtyReal > 0)
-      const arr = Object.values(map).filter(it => (it.qtyReal || 0) > 0);
-      
-      if (arr.length === 0) {
-        alert('Không có hàng tồn kho để xuất.');
-        return;
-      }
-      
-      arr.forEach((it, idx) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${idx+1}</td>
-          <td>${esc(it.name)}</td>
-          <td>${esc(it.unit)}</td>
-          <td class="num">${it.qtyReal}</td>
-          <td><input type="number" class="slxuat" min="0" max="${it.qtyReal}" data-name="${esc(it.name)}" data-unit="${esc(it.unit)}" style="width:80px"></td>
-        `;
-        xuatTableBody.appendChild(tr);
-      });
-      
-      xuatPopup.style.display = 'block';
-      console.log('Popup xuất hàng đã hiển thị'); // Debug
+    if (items.length === 0) {
+      alert('Vui lòng nhập số lượng xuất ít nhất một mặt hàng.');
+      isProcessingXuat = false;
+      return;
+    }
+
+    console.log('Danh sách xuất hàng:', items);
+    console.log('Cập nhật tồn kho:', updates);
+
+    // Cập nhật tồn kho
+    Object.keys(updates).forEach(key => {
+      manualStock[key] = updates[key];
     });
+    await saveToFirebase(PATH.MANUAL, manualStock);
+
+    // Lưu lịch sử xuất hàng
+    const now = new Date();
+    const ngay = now.toLocaleDateString('vi-VN');
+    const ngayISO = now.toISOString();
+    const historyItem = { 
+      phong, 
+      nguoi, 
+      danhSach: items, 
+      ngay, 
+      ngayISO,
+      timestamp: now.getTime() // Thêm timestamp để tránh trùng lặp
+    };
+
+    let allHistory = await loadFromFirebase(PATH.HISTORY, []);
+    if (!Array.isArray(allHistory)) allHistory = [];
+    
+    // Kiểm tra trùng lặp lịch sử (trong vòng 5 giây)
+    const recentDuplicate = allHistory.find(h => 
+      h.phong === phong && 
+      h.nguoi === nguoi && 
+      h.timestamp && 
+      (now.getTime() - h.timestamp) < 5000
+    );
+    
+    if (recentDuplicate) {
+      console.warn('Phát hiện lịch sử xuất hàng trùng lặp gần đây:', recentDuplicate);
+    }
+    
+    allHistory.push(historyItem);
+    await saveToFirebase(PATH.HISTORY, allHistory);
+
+    alert(`✅ Xuất hàng thành công!\nPhòng: ${phong}\nNgười nhận: ${nguoi}\nSố mặt hàng: ${items.length}`);
+    
+    // Reset form
+    xuatPopup.style.display = 'none';
+    tenNhanVien.value = '';
+    xuatTableBody.querySelectorAll('.slxuat').forEach(inp => inp.value = '');
+    
+    // Render lại giao diện
+    renderStock();
+    renderStockWarnings();
+    
+  } catch (error) {
+    console.error('Lỗi khi xuất hàng:', error);
+    alert('❌ Có lỗi xảy ra khi xuất hàng: ' + error.message);
+  } finally {
+    // Luôn reset cờ khi kết thúc
+    isProcessingXuat = false;
+  }
+});
+
+// ---------- SỬA LẠI PHẦN MỞ POPUP XUẤT HÀNG ----------
+xuatBtn.addEventListener('click', async () => {
+  console.log('Nút xuất hàng được click');
+  
+  // Reset trạng thái trước khi mở popup
+  isProcessingXuat = false;
+  
+  await loadPhongVaTen();
+  
+  // populate table - CHỈ lấy hàng còn tồn kho
+  const map = getCurrentStockMap();
+  xuatTableBody.innerHTML = '';
+  
+  // Lọc chỉ những hàng còn tồn kho (qtyReal > 0)
+  const arr = Object.values(map).filter(it => (it.qtyReal || 0) > 0);
+  
+  if (arr.length === 0) {
+    alert('Không có hàng tồn kho để xuất.');
+    return;
+  }
+  
+  arr.forEach((it, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${idx+1}</td>
+      <td>${esc(it.name)}</td>
+      <td>${esc(it.unit)}</td>
+      <td class="num">${it.qtyReal}</td>
+      <td><input type="number" class="slxuat" min="0" max="${it.qtyReal}" data-name="${esc(it.name)}" data-unit="${esc(it.unit)}" style="width:80px" value="0"></td>
+    `;
+    xuatTableBody.appendChild(tr);
+  });
+  
+  xuatPopup.style.display = 'block';
+  console.log('Popup xuất hàng đã hiển thị');
+});
+
+// ---------- THÊM SỰ KIỆN ĐÓNG POPUP ĐỂ RESET ----------
+closeXuatBtn.addEventListener('click', () => {
+  xuatPopup.style.display = 'none';
+  isProcessingXuat = false; // Reset cờ khi đóng popup
+});
+
+// ESC key close - thêm reset cờ
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') {
+    if (popupDetail.style.display === 'block') popupDetail.style.display = 'none';
+    if (xuatPopup.style.display === 'block') {
+      xuatPopup.style.display = 'none';
+      isProcessingXuat = false; // Reset cờ khi đóng bằng ESC
+    }
+  }
+});
+
+// ---------- CẢI THIỆN HÀM LOAD PHÒNG VÀ TÊN ----------
+async function loadPhongVaTen() {
+  const phong = await loadFromFirebase(PATH.PHONG, []);
+  chonPhong.innerHTML = Array.isArray(phong) ? phong.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('') : '';
+  
+  const tenList = await loadFromFirebase(PATH.TEN, []);
+  
+  // Cập nhật select box người nhận
+  tenNhanVien.innerHTML = '<option value="">-- Chọn người nhận --</option>' + 
+    (Array.isArray(tenList) ? tenList.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('') : '');
+}
+
+
+// ---------- HÀM THÊM TÊN (CẢI THIỆN) ----------
+async function addTen(val) {
+  if (!val) return;
+  
+  const list = await loadFromFirebase(PATH.TEN, []);
+  if (!Array.isArray(list)) return;
+  
+  // Chuẩn hóa tên (viết hoa chữ cái đầu, xóa khoảng trắng thừa)
+  const standardizedVal = val.trim().replace(/\s+/g, ' ')
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+  
+  // Kiểm tra xem đã tồn tại chưa (không phân biệt hoa thường)
+  const exists = list.some(item => 
+    item.toLowerCase().trim() === standardizedVal.toLowerCase().trim()
+  );
+  
+  if (!exists) {
+    list.push(standardizedVal);
+    // Sắp xếp theo thứ tự alphabet
+    list.sort((a, b) => a.localeCompare(b, 'vi-VN'));
+    await saveToFirebase(PATH.TEN, list);
+    
+    // Reload danh sách và chọn người vừa thêm
+    await loadPhongVaTen();
+    tenNhanVien.value = standardizedVal;
+  }
+}
+
+// ---------- SỰ KIỆN THÊM TÊN THỦ CÔNG ----------
+themTenBtn.addEventListener('click', async () => {
+  const val = prompt('Nhập tên người nhận mới:');
+  if (!val) return;
+  
+  await addTen(val);
+});
 
     lichSuNhanBtn.addEventListener('click', async () => {
       let allHistory;
@@ -1013,30 +1108,6 @@ if (manualStock && typeof manualStock === 'object') {
       container.innerHTML = html || '<div style="color:#777; text-align:center; padding:20px;">Chưa có lịch sử nhận hàng.</div>';
     });
 
-    function renderPhongAccordion(historyForDate) {
-      // Group by phong
-      const groupedByPhong = {};
-      historyForDate.forEach(h => {
-        if (!groupedByPhong[h.phong]) groupedByPhong[h.phong] = [];
-        groupedByPhong[h.phong].push(h);
-      });
-
-      let html = '';
-      Object.keys(groupedByPhong).sort().forEach(phong => {
-        const arr = groupedByPhong[phong];
-        html += `
-          <div class="accordion-item">
-            <div class="accordion-header" onclick="this.nextElementSibling.classList.toggle('active'); this.querySelector('.arrow').innerText = this.nextElementSibling.classList.contains('active') ? '▼' : '▶';">
-              ${esc(phong)} <span class="arrow">▶</span>
-            </div>
-            <div class="accordion-content">
-              ${renderNhanVienAccordion(arr)}
-            </div>
-          </div>
-        `;
-      });
-      return html;
-    }
 
     function renderNhanVienAccordion(arr) {
       // Group by nguoi

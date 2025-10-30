@@ -133,51 +133,53 @@
   </div>
 
   <!-- ========== POPUP XUẤT HÀNG ========== -->
-  <div id="xuatPopup" class="popup" style="display:none;">
-    <header>
-      <div>🚚 Xuất hàng</div>
-      <button id="closeXuat" class="popup-close-btn" title="Đóng">✖</button>
-    </header>
-    <div class="body">
-      <div class="form-row">
-        <!-- Nhóm Phòng/Ban -->
-        <div class="form-group">
-          <label>Phòng/Ban:</label>
-          <select id="chonPhong"></select>
-          <button id="themPhong" title="Thêm phòng ban">➕</button>
-        </div>
-        
-        <!-- Nhóm Người nhận -->
-        <div class="form-group">
-          <label>Người nhận:</label>
-          <input id="tenNhanVien" list="suggestTen">
-          <datalist id="suggestTen"></datalist>
-          <button id="themTen" title="Thêm người nhận">➕</button>
-        </div>
-        
-        <!-- Nút xác nhận -->
-        <button id="confirmXuat" class="main-btn">🚚 Xác nhận xuất hàng</button>
+  <!-- ========== POPUP XUẤT HÀNG ========== -->
+<div id="xuatPopup" class="popup" style="display:none;">
+  <header>
+    <div>🚚 Xuất hàng</div>
+    <button id="closeXuat" class="popup-close-btn" title="Đóng">✖</button>
+  </header>
+  <div class="body">
+    <div class="form-row">
+      <!-- Nhóm Phòng/Ban -->
+      <div class="form-group">
+        <label>Phòng/Ban:</label>
+        <select id="chonPhong"></select>
+        <button id="themPhong" title="Thêm phòng ban">➕</button>
       </div>
-      <div class="search-box">
-        <input id="searchXuat" type="text" placeholder="Tìm sản phẩm...">
+      
+      <!-- Nhóm Người nhận (CHỈ DÙNG SELECT BOX) -->
+      <div class="form-group">
+        <label>Người nhận:</label>
+        <select id="tenNhanVien">
+          <option value="">-- Chọn người nhận --</option>
+        </select>
+        <button id="themTen" title="Thêm người nhận mới">➕</button>
       </div>
+      
+      <!-- Nút xác nhận -->
+      <button id="confirmXuat" class="main-btn">🚚 Xác nhận xuất hàng</button>
+    </div>
+    <div class="search-box">
+      <input id="searchXuat" type="text" placeholder="Tìm sản phẩm...">
+    </div>
 
-      <div class="table-wrapper">
-        <table id="xuatTable">
-          <thead>
-            <tr>
-              <th>STT</th>
-              <th>Tên vật tư</th>
-              <th>ĐVT</th>
-              <th>SL tồn</th>
-              <th>SL xuất</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+    <div class="table-wrapper">
+      <table id="xuatTable">
+        <thead>
+          <tr>
+            <th>STT</th>
+            <th>Tên vật tư</th>
+            <th>ĐVT</th>
+            <th>SL tồn</th>
+            <th>SL xuất</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
+</div>
 
   <!-- ✅ THÊM POPUP THÊM SẢN PHẨM MỚI -->
   <div id="addProductPopup" class="popup" style="display:none;">
