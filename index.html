@@ -2,13 +2,13 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Quản lý tồn kho từ Excel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Quản lý Vật Tư của Diệu Ánh</title>
 
-  <!-- ✅ Thư viện đọc Excel (SheetJS) -->
+  <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
-  <!-- ✅ Firebase SDK -->
+  <!-- Firebase -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
     import { getDatabase } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
@@ -31,19 +31,12 @@
     window.firebaseReady = true;
   </script>
 
-  <!-- ✅ CSS tách riêng -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
- <header id="mainHeader">
-  <!-- Title luôn ở đầu trên mobile -->
-  <div class="header-title mobile-title">
-    Quản lý Vật Tư của Diệu Ánh
-  </div>
-  
-  <!-- Nhóm 1: 4 buttons ngang (file input bọc như button + 3 buttons) -->
-  <div class="header-group1">
+<header id="mainHeader">
+ <div class="header-group1">
     <!-- ✅ INPUT FILE BỌC TRONG LABEL (như button) -->
     <label for="excelInput" class="file-btn">
       📁 Chọn file
@@ -54,91 +47,63 @@
     <button id="viewPhieu" title="Danh sách nhận">📋 Nhận</button>
     <button id="lichSuNhan" title="Lịch sử nhận hàng">📅 Lịch sử</button>
   </div>
-  
-  <!-- Nhóm 2: 2 ô ngang - Toggle + Xóa -->
+
   <div class="header-group2">
-    <!-- ✅ THÊM NÚT TOGGLE CHO MOBILE -->
-    <button id="toggleSidebar" class="mobile-only" title="Ẩn/hiện danh sách phiếu">☰ Danh sách</button>
-    <button id="clearBtn" title="Xóa toàn bộ dữ liệu">🗑️ Xóa</button>
+    <button id="toggleSidebar" class="mobile-only" title="Ẩn/hiện danh sách phiếu">Danh sách</button>
+    <button id="clearBtn" title="Xóa toàn bộ dữ liệu">Xóa</button>
   </div>
 </header>
 
-  <!-- ========== MAIN ========== -->
-  <main id="mainContent">
-    <div id="left">
-      <h3>Danh sách phiếu nhập kho</h3>
-      <div class="search-box">
-        <input id="searchCodes" type="text" placeholder="Tìm theo mã hoặc ngày...">
+<main id="mainContent">
+  <div id="left">
+    <h3>Danh sách phiếu nhập kho</h3>
+    <div class="search-box"><input id="searchCodes" type="text" placeholder="Tìm theo mã hoặc ngày..."></div>
+    <div id="codes"></div>
+  </div>
+
+  <div id="center">
+    <!-- Bộ lọc thời gian -->
+    <div id="stockFilter" class="filter-bar" style="display:none;">
+      <div class="filter-group"><label>Từ:</label><input type="date" id="stockFromDate"></div>
+      <div class="filter-group"><label>Đến:</label><input type="date" id="stockToDate"></div>
+      <div class="filter-group"><button id="applyStockFilter" class="main-btn">Lọc theo ngày</button></div>
+      <div class="filter-group"><button id="toggleStockMode" class="main-btn">Chuyển sang Tồn kho hiện tại</button></div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <button id="showStockFilter" class="main-btn">Xem nhập theo thời gian</button>
+    </div>
+
+    <!-- CẢNH BÁO TỒN KHO THẤP (mở rộng) -->
+    <div id="stockWarnings" class="stock-warnings">
+      <h4 onclick="toggleWarnings()">Cảnh báo tồn kho thấp <span id="toggleArrow">Right Arrow</span></h4>
+      <div id="warningList" class="warning-list" style="display:none;"></div>
+    </div>
+
+    <!-- BẢNG TỒN KHO -->
+    <div class="table-wrapper">
+      <h3>Bảng tồn kho thực tế</h3>
+      <div style="margin-bottom:16px;">
+        <button id="addProductBtn" class="main-btn" title="Thêm sản phẩm mới vào tồn kho">Thêm sản phẩm</button>
       </div>
-      <div id="codes"></div>
+      <div class="search-box"><input id="searchStock" type="text" placeholder="Tìm sản phẩm..."></div>
+      <table id="stockTable">
+        <thead>
+          <tr>
+            <th>STT</th><th>Tên vật tư</th><th>ĐVT</th>
+            <th class="num">SL nhập</th><th class="num">Đơn giá</th><th class="num">Thành tiền</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
 
-    <!-- Trong phần center của index.html -->
-<div id="center">
-  
-  
-  <!-- Bộ lọc thời gian -->
-  <div id="stockFilter" class="filter-bar" style="display: none;">
-    <div class="filter-group">
-      <label>📅 Từ:</label>
-      <input type="date" id="stockFromDate">
-    </div>
-    <div class="filter-group">
-      <label>Đến:</label>
-      <input type="date" id="stockToDate">
-    </div>
-    <div class="filter-group">
-      <button id="applyStockFilter" class="main-btn">🔍 Lọc theo ngày</button>
-    </div>
-    <div class="filter-group">
-      <button id="toggleStockMode" class="main-btn">Chuyển sang Tồn kho hiện tại</button>
+    <div id="stockTotal" class="stock-total" style="display:none; margin-top:16px; padding:12px; background:var(--primary-light); border-radius:8px; text-align:right; font-weight:bold;">
+      <span>Tổng cộng: </span><span id="totalQty">0</span> sản phẩm - <span id="totalAmount">0</span> VNĐ
     </div>
   </div>
-
-  <!-- Nút toggle -->
-  <div style="margin-bottom: 16px;">
-    <button id="showStockFilter" class="main-btn">📊 Xem nhập theo thời gian</button>
-  </div>
-
-  
-  
-  <!-- Cảnh báo tồn kho -->
-  <div id="stockWarnings" class="stock-warnings" style="display: none;">
-    <h4>⚠️ Cảnh báo tồn kho thấp</h4>
-    <div id="warningList" class="warning-list"></div>
-  </div>
-
-  <!-- Bảng tồn kho -->
-  <div class="table-wrapper">
-    <h3>Bảng tồn kho thực tế</h3>
-    <!-- ✅ THÊM NÚT THÊM SẢN PHẨM PHÍA TRÊN BẢNG TỒN KHO -->
-  <div style="margin-bottom: 16px;">
-    <button id="addProductBtn" class="main-btn" title="Thêm sản phẩm mới vào tồn kho">➕ Thêm sản phẩm</button>
-  </div>
-    <table id="stockTable">
-      <thead>
-        <tr>
-          <th>STT</th>
-          <th>Tên vật tư</th>
-          <th>ĐVT</th>
-          <th class="num">SL nhập</th>
-          <th class="num">Đơn giá</th>
-          <th class="num">Thành tiền</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <!-- Tổng cộng hiển thị dạng văn bản -->
-  <div id="stockTotal" class="stock-total" style="display: none; margin-top: 16px; padding: 12px; background: var(--primary-light); border-radius: 8px; text-align: right; font-weight: bold;">
-    <span>Tổng cộng: </span>
-    <span id="totalQty">0</span> sản phẩm - 
-    <span id="totalAmount">0</span> VNĐ
-  </div>
-</div>
-  </main>
+</main>
 
   <!-- ========== POPUP CHI TIẾT PHIẾU ========== -->
   <div id="popup" class="popup" style="display:none;">
@@ -192,6 +157,9 @@
         
         <!-- Nút xác nhận -->
         <button id="confirmXuat" class="main-btn">🚚 Xác nhận xuất hàng</button>
+      </div>
+      <div class="search-box">
+        <input id="searchXuat" type="text" placeholder="Tìm sản phẩm...">
       </div>
 
       <div class="table-wrapper">

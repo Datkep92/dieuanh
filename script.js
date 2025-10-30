@@ -1394,7 +1394,138 @@ if (addProductBtn) {
       });
     };
   }
+// ---------- HÀM MỚI: Toggle cảnh báo tồn kho ----------
+    window.toggleWarnings = function() {
+      const warningList = document.getElementById('warningList');
+      const arrow = document.getElementById('toggleArrow');
+      if (warningList.style.display === 'none') {
+        warningList.style.display = 'block';
+        arrow.textContent = '▼';
+      } else {
+        warningList.style.display = 'none';
+        arrow.textContent = '▶';
+      }
+    };
+  // ---------- SEARCH FUNCTIONALITY ----------
 
+// Tìm kiếm trong bảng tồn kho
+const searchStockInput = document.getElementById('searchStock');
+if (searchStockInput) {
+  searchStockInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase().trim();
+    filterStockTable(searchTerm);
+  });
+}
+
+// Tìm kiếm trong popup xuất hàng
+const searchXuatInput = document.getElementById('searchXuat');
+if (searchXuatInput) {
+  searchXuatInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase().trim();
+    filterXuatTable(searchTerm);
+  });
+}
+
+// Hàm lọc bảng tồn kho
+function filterStockTable(searchTerm) {
+  const rows = document.querySelectorAll('#stockTable tbody tr');
+  let visibleCount = 0;
+  
+  rows.forEach((row, index) => {
+    const nameCell = row.querySelector('.col-name');
+    const unitCell = row.querySelector('.col-unit');
+    
+    if (nameCell && unitCell) {
+      const name = nameCell.textContent.toLowerCase();
+      const unit = unitCell.textContent.toLowerCase();
+      
+      const matches = searchTerm === '' || 
+                     name.includes(searchTerm) || 
+                     unit.includes(searchTerm);
+      
+      row.style.display = matches ? '' : 'none';
+      
+      // Cập nhật STT chỉ cho các hàng hiển thị
+      if (matches) {
+        visibleCount++;
+        const sttCell = row.querySelector('td:first-child');
+        if (sttCell) {
+          sttCell.textContent = visibleCount;
+        }
+      }
+    }
+  });
+  
+  // Hiển thị thông báo nếu không có kết quả
+  const tbody = document.querySelector('#stockTable tbody');
+  const noResultsRow = tbody.querySelector('.no-results');
+  
+  if (visibleCount === 0 && searchTerm !== '') {
+    if (!noResultsRow) {
+      const row = document.createElement('tr');
+      row.className = 'no-results';
+      row.innerHTML = `<td colspan="7" style="text-align:center;color:#777;padding:20px;">Không tìm thấy sản phẩm nào phù hợp với "<strong>${esc(searchTerm)}</strong>"</td>`;
+      tbody.appendChild(row);
+    }
+  } else if (noResultsRow) {
+    noResultsRow.remove();
+  }
+}
+
+// Hàm lọc bảng xuất hàng
+function filterXuatTable(searchTerm) {
+  const rows = document.querySelectorAll('#xuatTable tbody tr');
+  let visibleCount = 0;
+  
+  rows.forEach((row, index) => {
+    const nameCell = row.querySelector('td:nth-child(2)'); // Cột tên sản phẩm
+    const unitCell = row.querySelector('td:nth-child(3)'); // Cột đơn vị
+    
+    if (nameCell && unitCell) {
+      const name = nameCell.textContent.toLowerCase();
+      const unit = unitCell.textContent.toLowerCase();
+      
+      const matches = searchTerm === '' || 
+                     name.includes(searchTerm) || 
+                     unit.includes(searchTerm);
+      
+      row.style.display = matches ? '' : 'none';
+      
+      // Cập nhật STT chỉ cho các hàng hiển thị
+      if (matches) {
+        visibleCount++;
+        const sttCell = row.querySelector('td:first-child');
+        if (sttCell) {
+          sttCell.textContent = visibleCount;
+        }
+      }
+    }
+  });
+  
+  // Hiển thị thông báo nếu không có kết quả
+  const tbody = document.querySelector('#xuatTable tbody');
+  const noResultsRow = tbody.querySelector('.no-results');
+  
+  if (visibleCount === 0 && searchTerm !== '') {
+    if (!noResultsRow) {
+      const row = document.createElement('tr');
+      row.className = 'no-results';
+      row.innerHTML = `<td colspan="5" style="text-align:center;color:#777;padding:20px;">Không tìm thấy sản phẩm nào phù hợp với "<strong>${esc(searchTerm)}</strong>"</td>`;
+      tbody.appendChild(row);
+    }
+  } else if (noResultsRow) {
+    noResultsRow.remove();
+  }
+}
+
+// Thêm placeholder gợi ý cho ô tìm kiếm
+if (searchStockInput) {
+  searchStockInput.placeholder = 'Tìm theo tên sản phẩm hoặc đơn vị...';
+}
+
+if (searchXuatInput) {
+  searchXuatInput.placeholder = 'Tìm theo tên sản phẩm hoặc đơn vị...';
+}  
   // Khởi động ngay
   initApp();
 });

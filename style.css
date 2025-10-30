@@ -1468,3 +1468,291 @@ input:focus, select:focus {
     flex: 1;
   }
 }
+/* ========== FORM XUẤT HÀNG ========== */
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  flex-wrap: nowrap;
+}
+
+.form-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0; /* Quan trọng: cho phép co nhỏ */
+}
+
+.form-group label {
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 85px; /* Cân đối chiều rộng label */
+  font-size: 14px;
+  text-align: right;
+}
+
+.form-group input,
+.form-group select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  flex: 1;
+  min-width: 120px;
+  max-width: 200px; /* Giới hạn chiều rộng tối đa */
+}
+
+.form-group button {
+  background: var(--primary);
+  color: var(--white);
+  border: none;
+  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.form-group button:hover {
+  background: var(--primary-dark);
+  transform: scale(1.05);
+}
+
+/* Nút xác nhận xuất hàng */
+#confirmXuat {
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin: 0;
+  min-width: 160px; /* Đảm bảo nút đủ rộng */
+}
+
+/* ========== RESPONSIVE MOBILE ========== */
+@media (max-width: 768px) {
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  
+  .form-group {
+    flex-direction: row;
+    align-items: center;
+    min-width: auto;
+  }
+  
+  .form-group label {
+    min-width: 100px;
+    text-align: left;
+  }
+  
+  .form-group input,
+  .form-group select {
+    flex: 1;
+    min-width: auto;
+    max-width: none;
+  }
+  
+  #confirmXuat {
+    width: 100%;
+    margin-top: 8px;
+    min-width: auto;
+  }
+}
+/* ========== LỊCH SỬ NHẬN HÀNG STYLES ========== */
+.date-item {
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.date-header {
+  background: var(--primary);
+  color: var(--white);
+  padding: 12px 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.date-header:hover {
+  background: var(--primary-dark);
+}
+
+.date-content {
+  display: none;
+  padding: 0;
+}
+
+.date-content.active {
+  display: block;
+}
+
+/* Phòng ban accordion */
+.phong-item {
+  margin: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.phong-header {
+  background: var(--primary-light);
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.phong-header:hover {
+  background: #e1f0ff;
+}
+
+.phong-content {
+  display: none;
+  padding: 0;
+}
+
+.phong-content.active {
+  display: block;
+}
+
+/* Nhân viên table */
+.nhanvien-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.nhanvien-table th {
+  background: #f8f9fa;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  text-align: left;
+}
+
+.nhanvien-table td {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+}
+
+.nhanvien-table .num {
+  text-align: right;
+}
+
+/* ========== RESPONSIVE MOBILE ========== */
+@media (max-width: 768px) {
+  .date-header,
+  .phong-header {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  
+  .nhanvien-table {
+    font-size: 12px;
+  }
+  
+  .nhanvien-table th,
+  .nhanvien-table td {
+    padding: 4px 6px;
+  }
+}
+
+/* ========== RESPONSIVE MOBILE ========== */
+@media (max-width: 768px) {
+  .filter-bar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+  }
+  
+  /* Dòng 1: Từ - Đến */
+  .filter-bar .filter-group:nth-child(1),
+  .filter-bar .filter-group:nth-child(2) {
+    flex: 0 0 calc(50% - 4px);
+    min-width: auto;
+  }
+  
+  /* Dòng 2: Phòng - Nhân viên */
+  .filter-bar .filter-group:nth-child(3),
+  .filter-bar .filter-group:nth-child(4) {
+    flex: 0 0 calc(50% - 4px);
+    min-width: auto;
+  }
+  
+  /* Dòng 3: Nút Lọc */
+  #btnLoc {
+    flex: 0 0 100%;
+    width: 100%;
+    margin-top: 4px;
+    order: 5; /* Đảm bảo nút luôn ở cuối */
+  }
+  
+  .filter-group {
+    flex-direction: row;
+    align-items: center;
+  }
+  
+  .filter-group label {
+    min-width: 40px;
+    font-size: 12px;
+  }
+  
+  .filter-group input,
+  .filter-group select {
+    flex: 1;
+    min-width: auto;
+    font-size: 12px;
+    padding: 5px 6px;
+  }
+  
+  /* Mobile table styles */
+  .accordion-content table {
+    font-size: 12px;
+  }
+  
+  .accordion-content th,
+  .accordion-content td {
+    padding: 6px 8px;
+  }
+}
+
+/* Đảm bảo các filter group có đủ khoảng cách trên mobile */
+@media (max-width: 480px) {
+  .filter-bar {
+    gap: 6px;
+  }
+  
+  .filter-bar .filter-group:nth-child(1),
+  .filter-bar .filter-group:nth-child(2),
+  .filter-bar .filter-group:nth-child(3),
+  .filter-bar .filter-group:nth-child(4) {
+    flex: 0 0 calc(50% - 3px);
+  }
+  
+  .filter-group label {
+    min-width: 35px;
+    font-size: 11px;
+  }
+  
+  .filter-group input,
+  .filter-group select {
+    font-size: 11px;
+    padding: 4px 5px;
+  }
+}
