@@ -1,65 +1,9 @@
 // script.js
-// Quản lý tồn kho từ Excel — bản hoàn chỉnh với Firebase Realtime Database + Error Handling + Fix History + Login + Logout/Reset + Thêm/Sửa Tồn Kho
+// Quản lý tồn kho từ Excel — bản hoàn chỉnh với Firebase Realtime Database + Error Handling + Fix History + Thêm/Sửa Tồn Kho + Lịch sử nhận hàng + Sắp xếp + Search + Fix Delete + Bộ lọc thời gian cho nhập kho
 
 import { getDatabase, ref, set, get, onValue, push } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // ---------- LOGIN HANDLER ----------
-  const loginOverlay = document.getElementById('loginOverlay');
-  const usernameInput = document.getElementById('username');
-  const passwordInput = document.getElementById('password');
-  const loginBtn = document.getElementById('loginBtn');
-  const loginError = document.getElementById('loginError');
-  const mainHeader = document.getElementById('mainHeader');
-  const mainContent = document.getElementById('mainContent');
-
-  const VALID_USER = 'dieuanh';
-  const VALID_PASS = 'Dieuanh1989';
-
-  // Không sử dụng localStorage cho trạng thái login để đảm bảo mỗi lần mở lại phải login
-  // Luôn hiển thị màn hình khóa ban đầu
-
-  loginBtn.addEventListener('click', () => {
-    const user = usernameInput.value.trim();
-    const pass = passwordInput.value.trim();
-    if (user === VALID_USER && pass === VALID_PASS) {
-      showMainContent();
-    } else {
-      loginError.style.display = 'block';
-      setTimeout(() => loginError.style.display = 'none', 3000);
-    }
-  });
-
-  // Enter key support
-  [usernameInput, passwordInput].forEach(input => {
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') loginBtn.click();
-    });
-  });
-
-  function showMainContent() {
-    loginOverlay.style.display = 'none';
-    mainHeader.style.display = 'block';
-    mainContent.style.display = 'block';
-    // Clear inputs
-    usernameInput.value = '';
-    passwordInput.value = '';
-    initApp(); // Khởi động app chính
-  }
-
-  function showLogin() {
-    loginOverlay.style.display = 'flex';
-    mainHeader.style.display = 'none';
-    mainContent.style.display = 'none';
-  }
-
-  // ---------- LOGOUT HANDLER ----------
-  const logoutBtn = document.getElementById('logoutBtn');
-  logoutBtn.addEventListener('click', () => {
-    // Xóa bất kỳ dữ liệu tạm nếu cần, nhưng chủ yếu reset UI
-    showLogin();
-  });
-
   async function initApp() {
     // ---------- Chờ dependencies ----------
     const waitFor = (condition, interval = 50) => new Promise(resolve => {
@@ -106,9 +50,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ---------- DOM ----------
     const excelInput = document.getElementById('excelInput');
     const clearBtn = document.getElementById('clearBtn');
-    const addStockBtn = document.getElementById('addStockBtn'); // Thêm nút thêm sản phẩm
     const codesDiv = document.getElementById('codes');
+    const searchCodesInput = document.getElementById('searchCodes');
     const stockTbody = document.querySelector('#stockTable tbody');
+    const stockFooter = document.getElementById('stockFooter');
+    const totalQty = document.getElementById('totalQty');
+    const totalAmount = document.getElementById('totalAmount');
     const popupDetail = document.getElementById('popup');
     const popupDetailHeader = document.getElementById('popupHeader');
     const popupDetailTable = document.querySelector('#popupTable tbody');
@@ -125,11 +72,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     const xuatTableBody = document.querySelector('#xuatTable tbody');
     const confirmXuatBtn = document.getElementById('confirmXuat');
 
+    // ---------- DOM cho bộ lọc thời gian ----------
+    const showStockFilterBtn = document.getElementById('showStockFilter');
+    const stockFilter = document.getElementById('stockFilter');
+    const applyStockFilterBtn = document.getElementById('applyStockFilter');
+    const toggleStockModeBtn = document.getElementById('toggleStockMode');
+    const stockFromDate = document.getElementById('stockFromDate');
+    const stockToDate = document.getElementById('stockToDate');
+
     const viewPhieuBtn = document.getElementById('viewPhieu');
+    const lichSuNhanBtn = document.getElementById('lichSuNhan');
+    // ---------- ✅ THÊM DOM CHO NÚT THÊM SẢN PHẨM ----------
+const addProductBtn = document.getElementById('addProductBtn');
+const addProductPopup = document.getElementById('addProductPopup');
+const closeAddProductBtn = document.getElementById('closeAddProduct');
+const saveNewProductBtn = document.getElementById('saveNewProduct');
+const newProductName = document.getElementById('newProductName');
+const newProductUnit = document.getElementById('newProductUnit');
+const newProductQty = document.getElementById('newProductQty');
+const newProductPrice = document.getElementById('newProductPrice');
+const addProductError = document.getElementById('addProductError');
+
+    // ---------- THÊM CHO TOGGLE SIDEBAR ----------
+    const toggleSidebarBtn = document.getElementById('toggleSidebar');
 
     // ---------- State ----------
     let allData = {}; // mapping code -> invoice object
     let manualStock = {};
+    let filteredCodes = [];
+    let stockMode = 'current'; // 'current' cho tồn kho hiện tại, 'filtered' cho nhập theo thời gian
+    let filteredInvoices = []; // Lưu hóa đơn đã lọc theo thời gian
 
     // ---------- Firebase helpers (with fallback) ----------
     async function saveToFirebase(path, data) {
@@ -169,20 +141,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ---------- Utility helpers ----------
-    // parse number strings like "2.436.000" or "1,234.56"
     function parseNumberFlexible(v) {
       if (v === null || v === undefined) return 0;
       if (typeof v === 'number') return v;
       let s = String(v).trim();
       if (s === '') return 0;
-      // if contains both dot and comma, try heuristic: dot thousands, comma decimal OR vice versa
+      // Thử thay thế dấu phẩy thành dấu chấm nếu có cả hai
       if (s.indexOf('.') > -1 && s.indexOf(',') > -1) {
-        // assume dot thousands, comma decimal => remove dots, replace comma with dot
-        const alt1 = Number(s.replace(/\./g, '').replace(/,/g, '.'));
-        if (!isNaN(alt1)) return alt1;
+        // Giả sử dấu chấm là phân cách hàng nghìn, dấu phẩy là thập phân -> xóa dấu chấm, thay dấu phẩy bằng chấm
+        s = s.replace(/\./g, '').replace(/,/g, '.');
+      } else if (s.indexOf(',') > -1) {
+        // Nếu chỉ có dấu phẩy, thay bằng dấu chấm (coi là thập phân)
+        s = s.replace(/,/g, '.');
+      } else if (s.indexOf('.') > -1) {
+        // FIX: Nếu chỉ có dấu chấm, coi là phân cách nghìn -> xóa hết dấu chấm
+        s = s.replace(/\./g, '');
       }
-      // else remove non-digit except dot and minus
+      // Loại bỏ tất cả ký tự không phải số, dấu chấm (thập phân), dấu trừ
       s = s.replace(/[^\d\.\-]/g, '');
+      // Nếu có nhiều dấu chấm, chỉ giữ lại dấu chấm cuối cùng (cho phần thập phân)
+      const parts = s.split('.');
+      if (parts.length > 2) {
+        s = parts[0] + '.' + parts.slice(1).join('');
+      }
       const n = Number(s);
       return isNaN(n) ? 0 : n;
     }
@@ -190,10 +171,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // parse VN date-time strings robustly -> Date object
     function parseVnDateTime(str) {
       if (!str) return new Date(NaN);
-      // if already ISO-like
+      // Thử parse theo ISO
       const tryIso = new Date(str);
       if (!isNaN(tryIso)) return tryIso;
-      // find dd/mm/yyyy
+      // Tìm định dạng dd/mm/yyyy hoặc dd-mm-yyyy
       const m = String(str).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
       const t = String(str).match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
       if (m) {
@@ -203,7 +184,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const time = t ? (t[1].length === 5 ? t[1] + ':00' : t[1]) : '00:00:00';
         return new Date(`${year}-${mon}-${day}T${time}`);
       }
-      return new Date(NaN);
+      // Thử parse lại với Date nếu không khớp
+      const fallback = new Date(str);
+      return isNaN(fallback) ? new Date(NaN) : fallback;
     }
 
     // escape html
@@ -212,126 +195,54 @@ document.addEventListener('DOMContentLoaded', async () => {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    // ---------- STOCK MAP: merge invoices -> map[name___unit] = {name, unit, qtyReq, qtyReal, price, amount}
-    function getCurrentStockMap() {
-      const map = {};
-      Object.values(allData).forEach(inv => {
-        if (!inv || !inv.items) return;
-        inv.items.forEach(it => {
-          const name = (it.name||'').trim();
-          const unit = (it.unit||'').trim();
-          if (!name) return;
-          const key = `${name}___${unit}`;
-          if (!map[key]) {
-            map[key] = {
-              name,
-              unit,
-              qtyReq: Number(it.qtyReq) || 0,
-              qtyReal: Number(it.qtyReal) || 0,
-              price: Number(it.price) || 0,
-              amount: Number(it.amount) || 0
-            };
-          } else {
-            map[key].qtyReq += Number(it.qtyReq) || 0;
-            map[key].qtyReal += Number(it.qtyReal) || 0;
-            map[key].amount += Number(it.amount) || 0;
-          }
-        });
-      });
-
-      // apply manual overrides if present (manual is an object by key)
-      if (manualStock && typeof manualStock === 'object' && Object.keys(manualStock).length) {
-        // manual entries use name___unit as keys
-        Object.entries(manualStock).forEach(([k, v]) => {
-          // v should have name, unit, qtyReq, qtyReal, price, amount
-          map[k] = {
-            name: v.name,
-            unit: v.unit,
-            qtyReq: Number(v.qtyReq) || 0,
-            qtyReal: Number(v.qtyReal) || 0,
-            price: Number(v.price) || 0,
-            amount: Number(v.amount) || 0
-          };
-        });
+    // ---------- STOCK LEVEL FUNCTIONS ----------
+    // Hàm xác định mức độ cảnh báo tồn kho
+    function getStockLevelClass(quantity) {
+      if (quantity <= 0) {
+        return 'stock-out'; // Xám: đã hết hàng
+      } else if (quantity <= 5) {
+        return 'stock-critical'; // Đỏ: cực kỳ nguy cấp (≤5)
+      } else if (quantity <= 15) {
+        return 'stock-low'; // Cam: tồn kho thấp (6-15)
+      } else {
+        return 'stock-normal'; // Xanh: bình thường (>15)
       }
-      return map;
     }
 
-    // ---------- HÀM THÊM SẢN PHẨM MỚI ----------
-    function addNewStockItem() {
-      // Tạo popup thêm sản phẩm
-      const popup = document.createElement('div');
-      popup.className = 'popup';
-      popup.style.display = 'block';
-      popup.innerHTML = `
-        <header>➕ Thêm sản phẩm mới vào tồn kho <span id="closeAddStock">✖</span></header>
-        <div class="body" style="padding: 12px;">
-          <div class="form-row">
-            <label>Tên vật tư:</label>
-            <input id="newName" type="text" style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-          </div>
-          <div class="form-row">
-            <label>ĐVT:</label>
-            <input id="newUnit" type="text" placeholder="Ví dụ: cái, kg..." style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-          </div>
-          <div class="form-row">
-            <label>SL tồn:</label>
-            <input id="newQty" type="number" min="0" value="0" style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-          </div>
-          <div class="form-row">
-            <label>Đơn giá:</label>
-            <input id="newPrice" type="number" min="0" step="0.01" value="0" style="width: 120px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-          </div>
-          <button id="confirmAddStock" class="main-btn">✅ Thêm</button>
-        </div>
-      `;
-      document.body.appendChild(popup);
-
-      // Xử lý đóng popup
-      document.getElementById('closeAddStock').addEventListener('click', () => popup.remove());
-      document.addEventListener('click', (ev) => {
-        if (ev.target === popup) popup.remove();
-      });
-
-      // Xử lý xác nhận thêm
-      document.getElementById('confirmAddStock').addEventListener('click', async () => {
-        const name = document.getElementById('newName').value.trim();
-        const unit = document.getElementById('newUnit').value.trim() || 'cái';
-        const qtyReal = parseNumberFlexible(document.getElementById('newQty').value);
-        const price = parseNumberFlexible(document.getElementById('newPrice').value);
-        const amount = qtyReal * price;
-
-        if (!name) {
-          alert('Vui lòng nhập tên vật tư!');
-          return;
-        }
-
-        const key = `${name}___${unit}`;
-        manualStock[key] = {
-          name,
-          unit,
-          qtyReal,
-          price,
-          amount
-        };
-
-        await saveToFirebase(PATH.MANUAL, manualStock);
-        renderStock();
-        popup.remove();
-        alert('✅ Đã thêm sản phẩm mới vào tồn kho.');
-      });
+    // Hàm lấy mô tả trạng thái tồn kho
+    function getStockLevelDescription(quantity) {
+      if (quantity <= 0) {
+        return 'Đã hết hàng';
+      } else if (quantity <= 5) {
+        return 'Sắp hết hàng';
+      } else if (quantity <= 15) {
+        return 'Tồn kho thấp';
+      } else {
+        return 'Tồn kho tốt';
+      }
     }
 
-    // ---------- RENDER LEFT (MÃ PHIẾU) ----------
-    function renderLeft() {
+    // ---------- RENDER LEFT (MÃ PHIẾU) - Sắp xếp mới nhất đầu + Search ----------
+    function renderLeft(filter = '') {
+      filteredCodes = Object.keys(allData).filter(code => {
+        const inv = allData[code];
+        const searchStr = (code + (inv.date || '')).toLowerCase();
+        return searchStr.includes(filter.toLowerCase());
+      });
+
+      // Sắp xếp theo date mới nhất (nếu có date, parse và sort descending)
+      filteredCodes.sort((a, b) => {
+        const dateA = allData[a].date ? parseVnDateTime(allData[a].date).getTime() : 0;
+        const dateB = allData[b].date ? parseVnDateTime(allData[b].date).getTime() : 0;
+        return dateB - dateA; // Mới nhất đầu
+      });
+
       codesDiv.innerHTML = '';
-      const keys = Object.keys(allData);
-      if (keys.length === 0) {
+      if (filteredCodes.length === 0) {
         codesDiv.innerHTML = '<div class="muted">Chưa có phiếu</div>';
         return;
       }
-      keys.sort();
-      keys.forEach(code => {
+      filteredCodes.forEach(code => {
         const inv = allData[code];
         const div = document.createElement('div');
         div.className = 'code-item';
@@ -351,7 +262,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (confirm(`Xóa phiếu ${code}?`)) {
             delete allData[code];
             await saveToFirebase(PATH.EXCEL, allData);
-            renderLeft();
+            renderLeft(searchCodesInput.value);
             renderStock();
           }
         });
@@ -362,94 +273,419 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
 
-    // ---------- RENDER STOCK (Cập nhật để thêm nút thêm sản phẩm) ----------
-    function renderStock() {
-      const map = getCurrentStockMap();
-      const arr = Object.values(map);
-      stockTbody.innerHTML = "";
+    // Search listener
+    searchCodesInput.addEventListener('input', (e) => renderLeft(e.target.value));
 
-      if (arr.length === 0) {
-        stockTbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#777">Chưa có dữ liệu</td></tr>`;
-        return;
-      }
-
-      arr.forEach((it, idx) => {
-        const tr = document.createElement("tr");
-        tr.dataset.key = `${it.name}___${it.unit}`;
-        
-        // Sử dụng qtyReal thay vì real, và tính toán thành tiền đúng
-        const soLuongTon = it.qtyReal || 0;
-        const donGia = it.price || 0;
-        const thanhTien = soLuongTon * donGia;
-        
-        tr.innerHTML = `
-          <td>${idx + 1}</td>
-          <td contenteditable="true" class="col-name editable">${esc(it.name)}</td>
-          <td contenteditable="true" class="col-unit editable">${esc(it.unit)}</td>
-          <td contenteditable="true" class="col-qty num editable">${soLuongTon}</td>
-          <td contenteditable="true" class="col-price num editable">${donGia}</td>
-          <td class="num">${thanhTien.toLocaleString("vi-VN")}</td>
-          <td><button class="delRow">🗑️</button></td>
-        `;
-        stockTbody.appendChild(tr);
-      });
-
-      // Thêm nút "Thêm sản phẩm" sau bảng nếu chưa có
-      if (!document.getElementById('addStockBtn')) {
-        const addBtn = document.createElement('button');
-        addBtn.id = 'addStockBtn';
-        addBtn.innerHTML = '➕ Thêm sản phẩm mới';
-        addBtn.className = 'main-btn';
-        addBtn.style.margin = '10px 0';
-        addBtn.addEventListener('click', addNewStockItem);
-        document.querySelector('#center').appendChild(addBtn);
-      }
-
-      // Cho phép chỉnh sửa và lưu tự động
-      stockTbody.querySelectorAll("[contenteditable]").forEach((cell) => {
-        cell.addEventListener("input", () => {
-          clearTimeout(window.saveTimer);
-          window.saveTimer = setTimeout(saveEditedStockFromTable, 500);
-        });
-      });
-
-      // Cho phép xóa sản phẩm
-      stockTbody.querySelectorAll(".delRow").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          if (confirm("Xóa sản phẩm này khỏi tồn kho?")) {
-            const key = btn.closest("tr").dataset.key;
-            delete manualStock[key];
-            await saveToFirebase(PATH.MANUAL, manualStock);
-            renderStock();
+    // ---------- STOCK MAP: merge invoices -> map[name___unit] = {name, unit, qtyReq, qtyReal, price, amount} ----------
+    function getCurrentStockMap() {
+      const map = {};
+      
+      // 1. Tổng hợp từ allData (Excel imports)
+      Object.values(allData).forEach(inv => {
+        if (!inv || !inv.items) return;
+        inv.items.forEach(it => {
+          const name = (it.name||'').trim();
+          const unit = (it.unit||'').trim();
+          if (!name) return;
+          const key = `${name}___${unit}`;
+          
+          if (!map[key]) {
+            map[key] = {
+              name,
+              unit,
+              qtyReq: Number(it.qtyReq) || 0,
+              qtyReal: Number(it.qtyReal) || 0,
+              price: Number(it.price) || 0,
+              amount: Number(it.amount) || 0
+            };
+          } else {
+            map[key].qtyReq += Number(it.qtyReq) || 0;
+            map[key].qtyReal += Number(it.qtyReal) || 0;
+            map[key].amount += Number(it.amount) || 0;
           }
         });
       });
+
+     // 2. Áp dụng manual overrides (nếu có)
+   // 2. Áp dụng manual overrides (nếu có)
+if (manualStock && typeof manualStock === 'object') {
+  Object.entries(manualStock).forEach(([key, v]) => {
+    if (v && v.name && v.unit) {
+      if (map[key]) {
+        // Fix: Sử dụng ?? để ghi đè ngay cả khi = 0 (không fallback falsy như ||)
+        map[key].qtyReal = Number(v.qtyReal) ?? map[key].qtyReal;
+        map[key].price = Number(v.price) ?? map[key].price;
+        map[key].amount = map[key].qtyReal * map[key].price;
+      } else {
+        // Nếu chưa tồn tại, tạo mới (hỗ trợ thêm sản phẩm thủ công)
+        map[key] = {
+          name: v.name,
+          unit: v.unit,
+          qtyReq: 0,
+          qtyReal: Number(v.qtyReal) ?? 0,
+          price: Number(v.price) ?? 0,
+          amount: Number(v.amount) ?? 0
+        };
+      }
+    }
+  });
+}
+      
+      return map;
     }
 
+    // ---------- HÀM MỚI: Lấy map nhập theo thời gian (tổng hợp từ hóa đơn trong khoảng thời gian) ----------
+    function getFilteredInputMap(fromDate, toDate) {
+      const map = {};
+      filteredInvoices = []; // Reset
+
+      // Lọc hóa đơn theo ngày
+      Object.entries(allData).forEach(([code, inv]) => {
+        if (!inv || !inv.date) return;
+        const invDate = parseVnDateTime(inv.date);
+        if (isNaN(invDate)) return;
+
+        // Kiểm tra khoảng thời gian
+        if (fromDate && invDate < new Date(fromDate + 'T00:00:00')) return;
+        if (toDate && invDate > new Date(toDate + 'T23:59:59')) return;
+
+        filteredInvoices.push({ code, inv });
+        // Tổng hợp items từ hóa đơn này
+        if (!inv || !inv.items) return;
+        inv.items.forEach(it => {
+          const name = (it.name||'').trim();
+          const unit = (it.unit||'').trim();
+          if (!name) return;
+          const key = `${name}___${unit}`;
+          
+          if (!map[key]) {
+            map[key] = {
+              name,
+              unit,
+              qtyReal: 0,
+              price: Number(it.price) || 0,
+              amount: 0
+            };
+          }
+          map[key].qtyReal += Number(it.qtyReal) || 0;
+          map[key].amount += Number(it.amount) || 0;
+        });
+      });
+
+      return map;
+    }
+
+    // ---------- RENDER STOCK (ĐÃ SỬA: Hỗ trợ chế độ lọc thời gian + Dòng tổng) ----------
+   function renderStock() {
+  let map;
+  let arr;
+  const isFilteredMode = stockMode === 'filtered';
+  const stockTotal = document.getElementById('stockTotal');
+
+  if (isFilteredMode) {
+    // Chế độ lọc: Tổng nhập theo thời gian
+    const from = stockFromDate.value;
+    const to = stockToDate.value;
+    if (!from || !to) {
+      alert('Vui lòng chọn khoảng thời gian từ và đến.');
+      return;
+    }
+    map = getFilteredInputMap(from, to);
+    arr = Object.values(map).filter(it => (it.qtyReal || 0) > 0);
+    
+    // Hiển thị tổng cộng dạng văn bản
+    let totalQtyValue = 0;
+    let totalAmountValue = 0;
+    arr.forEach(it => {
+      totalQtyValue += it.qtyReal;
+      totalAmountValue += it.amount;
+    });
+    
+    document.getElementById('totalQty').textContent = formatVnNumber(totalQtyValue);
+    document.getElementById('totalAmount').textContent = formatVnNumber(totalAmountValue);
+    stockTotal.style.display = 'block';
+  } else {
+    // Chế độ tồn kho hiện tại
+    map = getCurrentStockMap();
+    arr = Object.values(map).filter(it => (it.qtyReal || 0) > 0);
+    stockTotal.style.display = 'none'; // Ẩn tổng cộng
+  }
+
+  stockTbody.innerHTML = "";
+
+  if (arr.length === 0) {
+    stockTbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#777">Chưa có dữ liệu</td></tr>`;
+    stockTotal.style.display = 'none';
+    return;
+  }
+
+  // Helper function để format số VN (thêm .000 nếu cần)
+  function formatVnNumber(num) {
+    return num.toLocaleString('vi-VN');
+  }
+
+  arr.forEach((it, idx) => {
+    const tr = document.createElement("tr");
+    tr.dataset.key = `${it.name}___${it.unit}`;
+    const soLuong = isFilteredMode ? (it.qtyReal || 0) : (it.qtyReal || 0); // SL nhập hoặc tồn
+    
+    const donGia = it.price || 0;
+    const thanhTien = soLuong * donGia;
+    
+    // Áp dụng class cảnh báo tồn kho (chỉ cho chế độ hiện tại)
+    let stockClass = '';
+    let stockDescription = '';
+    if (!isFilteredMode) {
+      stockClass = getStockLevelClass(soLuong);
+      stockDescription = getStockLevelDescription(soLuong);
+    }
+    
+    tr.innerHTML = `
+      <td>${idx + 1}</td>
+      <td contenteditable="true" class="col-name editable">${esc(it.name)}</td>
+      <td contenteditable="true" class="col-unit editable">${esc(it.unit)}</td>
+      <td contenteditable="true" class="col-qty num editable ${stockClass}" title="${stockDescription}">${formatVnNumber(soLuong)}</td>
+      <td contenteditable="true" class="col-price num editable">${formatVnNumber(donGia)}</td>
+      <td class="num">${formatVnNumber(thanhTien)}</td>
+      <td><button class="delRow">🗑️</button></td>
+    `;
+    stockTbody.appendChild(tr);
+  });
+
+  // Thêm event cho editable: Format lại khi blur (thoát focus)
+  stockTbody.querySelectorAll("[contenteditable]").forEach((cell) => {
+    cell.addEventListener("blur", (e) => {
+      const val = e.target.innerText.trim();
+      if (cell.classList.contains('num') && val) {  // Chỉ format cột số
+        const parsed = parseNumberFlexible(val);
+        e.target.innerText = formatVnNumber(parsed);
+        // Trigger input để lưu (nếu cần)
+        cell.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+    
+    cell.addEventListener("input", () => {
+      clearTimeout(window.saveTimer);
+      window.saveTimer = setTimeout(() => {
+        saveEditedStockFromTable();
+        renderStockWarnings();
+      }, 500);
+    });
+  });
+
+  // Sửa xóa sản phẩm (chỉ cho chế độ hiện tại)
+  if (!isFilteredMode) {
+    stockTbody.querySelectorAll(".delRow").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (confirm("Xóa sản phẩm này khỏi tồn kho? (Set SL tồn = 0)")) {
+          const key = btn.closest("tr").dataset.key;
+          const currentItem = getCurrentStockMap()[key];
+          if (currentItem) {
+            manualStock[key] = {
+              ...currentItem,
+              qtyReal: 0,
+              amount: 0
+            };
+            await saveToFirebase(PATH.MANUAL, manualStock);
+          }
+          renderStock();
+          renderStockWarnings();
+        }
+      });
+    });
+  }
+  
+  renderStockWarnings();
+}
+
+    // ---------- SAVE EDITED STOCK (ĐÃ SỬA: Merge thông minh) ----------
     async function saveEditedStockFromTable() {
+      if (stockMode === 'filtered') return; // Không lưu chỉnh sửa ở chế độ lọc
+
       const rows = document.querySelectorAll("#stockTable tbody tr");
-      const obj = {};
+      const updates = {};
+      
       rows.forEach((tr) => {
         const tds = tr.querySelectorAll("td");
         if (tds.length < 6) return;
+        
         const name = tds[1].innerText.trim();
         if (!name) return;
-        const unit = tds[2].innerText.trim();
-        const qtyReal = Number(tds[3].innerText) || 0; // qtyReal thay vì real
-        const price = Number(tds[4].innerText) || 0;
-        const amount = qtyReal * price; // tính toán lại amount
         
-        obj[`${name}___${unit}`] = { 
+        const unit = tds[2].innerText.trim();
+        const qtyReal = parseNumberFlexible(tds[3].innerText);
+        const price = parseNumberFlexible(tds[4].innerText);
+        const amount = qtyReal * price;
+        
+        const key = `${name}___${unit}`;
+        
+        updates[key] = { 
           name, 
           unit, 
-          qtyReal, // qtyReal thay vì real
+          qtyReal,
           price, 
           amount 
         };
       });
-      manualStock = obj;
-      await saveToFirebase(PATH.MANUAL, obj);
+      
+      // MERGE thông minh: chỉ cập nhật các trường được chỉnh sửa
+      Object.keys(updates).forEach(key => {
+        if (!manualStock[key]) {
+          manualStock[key] = updates[key];
+        } else {
+          manualStock[key] = {
+            ...manualStock[key],
+            ...updates[key]
+          };
+        }
+      });
+      
+      await saveToFirebase(PATH.MANUAL, manualStock);
       renderStock();
+      renderStockWarnings();
+    }
+
+    // ---------- EVENT CHO BỘ LỌC THỜI GIAN ----------
+    showStockFilterBtn.addEventListener('click', () => {
+      stockFilter.style.display = 'block';
+      showStockFilterBtn.style.display = 'none';
+      stockMode = 'filtered';
+      toggleStockModeBtn.textContent = 'Chuyển sang Tồn kho hiện tại';
+      renderStock();
+    });
+
+    applyStockFilterBtn.addEventListener('click', () => {
+      renderStock();
+    });
+
+    toggleStockModeBtn.addEventListener('click', () => {
+      if (stockMode === 'filtered') {
+        stockMode = 'current';
+        stockFilter.style.display = 'none';
+        showStockFilterBtn.style.display = 'block';
+        toggleStockModeBtn.textContent = 'Chuyển sang Nhập theo thời gian';
+        renderStock();
+      }
+    });
+
+    // ---------- THÊM EVENT LISTENER CHO XÁC NHẬN XUẤT HÀNG ----------
+    confirmXuatBtn.addEventListener('click', async () => {
+      const phong = chonPhong.value;
+      const nguoi = tenNhanInput.value.trim();
+      
+      if (!phong || !nguoi) {
+        alert('Vui lòng chọn phòng và người nhận.');
+        return;
+      }
+
+      const items = [];
+      const updates = {};
+      
+      // Thu thập danh sách xuất kho
+      xuatTableBody.querySelectorAll('tr').forEach(tr => {
+        const inp = tr.querySelector('.slxuat');
+        const qty = Number(inp.value) || 0;
+        if (qty > 0) {
+          const name = inp.dataset.name;
+          const unit = inp.dataset.unit;
+          items.push({ name, unit, qty });
+          
+          // Tính toán tồn kho mới
+          const key = `${name}___${unit}`;
+          const currentStock = getCurrentStockMap()[key];
+          if (currentStock) {
+            const newQty = Math.max(0, currentStock.qtyReal - qty);
+            updates[key] = {
+              ...currentStock,
+              qtyReal: newQty,
+              amount: newQty * currentStock.price
+            };
+          }
+        }
+      });
+
+      if (items.length === 0) {
+        alert('Vui lòng nhập số lượng xuất ít nhất một mặt hàng.');
+        return;
+      }
+
+      // Cập nhật tồn kho
+      Object.keys(updates).forEach(key => {
+        manualStock[key] = updates[key];
+      });
+      await saveToFirebase(PATH.MANUAL, manualStock);
+
+      // Lưu lịch sử xuất hàng
+      const now = new Date();
+      const ngay = now.toLocaleDateString('vi-VN');
+      const ngayISO = now.toISOString();
+      const historyItem = { phong, nguoi, danhSach: items, ngay, ngayISO };
+
+      let allHistory = await loadFromFirebase(PATH.HISTORY, []);
+      if (!Array.isArray(allHistory)) allHistory = [];
+      allHistory.push(historyItem);
+      await saveToFirebase(PATH.HISTORY, allHistory);
+
+      alert('Xuất hàng thành công!');
+      xuatPopup.style.display = 'none';
+      renderStock();
+      renderStockWarnings();
+    });
+
+    // ---------- STOCK WARNING FUNCTIONS ----------
+    function renderStockWarnings() {
+      if (stockMode === 'filtered') {
+        document.getElementById('stockWarnings').style.display = 'none'; // Ẩn cảnh báo ở chế độ lọc
+        return;
+      }
+
+      const map = getCurrentStockMap();
+      const warningItems = [];
+      
+      Object.values(map).forEach(it => {
+        const soLuongTon = it.qtyReal || 0;
+        
+        // Chỉ cảnh báo cho sản phẩm còn tồn kho nhưng thấp
+        if (soLuongTon > 0 && soLuongTon <= 15) {
+          warningItems.push({
+            name: it.name,
+            unit: it.unit,
+            qty: soLuongTon,
+            level: soLuongTon <= 5 ? 'critical' : 'low'
+          });
+        }
+      });
+      
+      const warningsContainer = document.getElementById('stockWarnings');
+      const warningList = document.getElementById('warningList');
+      
+      if (warningItems.length === 0) {
+        warningsContainer.style.display = 'none';
+        return;
+      }
+      
+      // Sắp xếp: critical trước, low sau
+      warningItems.sort((a, b) => {
+        if (a.level === 'critical' && b.level !== 'critical') return -1;
+        if (a.level !== 'critical' && b.level === 'critical') return 1;
+        return a.qty - b.qty; // Số lượng thấp hơn trước
+      });
+      
+      let html = '';
+      warningItems.forEach(item => {
+        html += `
+          <div class="warning-item ${item.level}">
+            <div class="warning-info">
+              <span class="warning-name">${esc(item.name)}</span>
+              <span class="warning-unit">${esc(item.unit)}</span>
+            </div>
+            <div class="warning-qty">${item.qty}</div>
+          </div>
+        `;
+      });
+      
+      warningList.innerHTML = html;
+      warningsContainer.style.display = 'block';
     }
 
     // ---------- Show invoice detail popup ----------
@@ -511,95 +747,51 @@ document.addEventListener('DOMContentLoaded', async () => {
           const colMap = {};
           headerRow.forEach((cell, j) => {
             if (!cell) return;
-            const t = String(cell).toLowerCase();
-            if (/stt|no|số/.test(t)) colMap.stt = j;
-            else if (/(tên\s*vật\s*tư|tên|vật tư)/.test(t)) colMap.name = j;
-            else if (/(đvt|đơn vị)/.test(t)) colMap.unit = j;
-            else if (/(sl\s*yêu|số lượng yêu cầu)/.test(t)) colMap.qtyReq = j;
-            else if (/(sl\s*thực|số lượng thực)/.test(t)) colMap.qtyReal = j;
-            else if (/(đơn giá|price)/.test(t)) colMap.price = j;
-            else if (/(thành tiền|total)/.test(t)) colMap.amount = j;
+            const lower = cell.toLowerCase().trim();
+            if (lower.includes('tên') || lower.includes('vật')) colMap.name = j;
+            if (lower.includes('đvt') || lower.includes('đơn vị')) colMap.unit = j;
+            if (lower.includes('sl yêu') || lower.includes('số lượng yêu')) colMap.qtyReq = j;
+            if (lower.includes('sl thực') || lower.includes('thực phát')) colMap.qtyReal = j;
+            if (lower.includes('đơn giá')) colMap.price = j;
+            if (lower.includes('thành tiền') || lower.includes('t.tiền')) colMap.amount = j;
           });
 
           const items = [];
           for (let i = headerIdx + 1; i < rows.length; i++) {
-            let r = rows[i];
-            if (!r) continue;
-            const text = r.join(' ');
-            if (/cộng|tổng/i.test(text)) break;
-
-            // Nếu tên vật tư bị tách sang dòng sau, ghép lại
-            if (colMap.name !== undefined && !r[colMap.name] && i + 1 < rows.length) {
-              const next = rows[i+1];
-              r = [r[0], `${r[1]||''} ${next[0]||next[1]||''}`.trim(), ...(next.slice(2))];
-              i++;
-            }
-            // extract using colMap or fallback positions
-            const stt = colMap.stt !== undefined ? r[colMap.stt] : r[0];
-            const name = colMap.name !== undefined ? r[colMap.name] : r[1] || r[0];
-            const unit = colMap.unit !== undefined ? r[colMap.unit] : r[2] || '';
-            const qtyReq = colMap.qtyReq !== undefined ? parseNumberFlexible(r[colMap.qtyReq]) : parseNumberFlexible(r[3]);
-            const qtyReal = colMap.qtyReal !== undefined ? parseNumberFlexible(r[colMap.qtyReal]) : parseNumberFlexible(r[4]);
-            const price = colMap.price !== undefined ? parseNumberFlexible(r[colMap.price]) : parseNumberFlexible(r[5]);
-            const amount = colMap.amount !== undefined ? parseNumberFlexible(r[colMap.amount]) : (qtyReal * price);
-
-            if (!name || String(name).trim() === '') continue;
+            const row = rows[i];
+            if (!row || row.length < 2) break;
+            const name = row[colMap.name];
+            if (!name || String(name).trim() === '') break;
             items.push({
-              stt: stt || items.length + 1,
-              name: String(name).trim(),
-              unit: String(unit || '').trim(),
-              qtyReq,
-              qtyReal,
-              price,
-              amount
+              name: String(name || '').trim(),
+              unit: String(row[colMap.unit] || '').trim(),
+              qtyReq: parseNumberFlexible(row[colMap.qtyReq]),
+              qtyReal: parseNumberFlexible(row[colMap.qtyReal]),
+              price: parseNumberFlexible(row[colMap.price]),
+              amount: parseNumberFlexible(row[colMap.amount])
             });
           }
 
-          allData[code] = {
-            code,
-            date: (headerText.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/)||[])[1] || '',
-            headerText,
-            items
-          };
-        } catch (err) {
-          console.error('Lỗi đọc file', file.name, err);
+          if (items.length > 0) {
+            const dateMatch = headerText.match(/Ngày[:\s]*(\d{1,2}\/\d{1,2}\/\d{4}.*?)(?=\n|$)/i);
+            const date = dateMatch ? dateMatch[1].trim() : new Date().toLocaleDateString('vi-VN');
+            allData[code] = { items, date };
+            await saveToFirebase(PATH.EXCEL, allData);
+          }
+        } catch (e) {
+          console.error('Lỗi đọc file:', e, file.name);
+          alert(`Lỗi đọc file ${file.name}: ${e.message}`);
         }
       }
-
-      await saveToFirebase(PATH.EXCEL, allData);
-      renderLeft();
+      renderLeft(searchCodesInput.value);
       renderStock();
-      // clear input so same file can be re-selected
-      excelInput.value = '';
-      alert('✅ Đã nhập xong file Excel.');
     });
 
-    // ---------- CLEAR ALL DATA (including history) ----------
-    clearBtn.addEventListener('click', async () => {
-      if (!confirm('⚠️ Xóa toàn bộ dữ liệu: tồn kho, lịch sử xuất, phòng ban, nhân viên?')) return;
-      allData = {};
-      manualStock = {};
-      await saveToFirebase(PATH.EXCEL, {});
-      await saveToFirebase(PATH.HISTORY, []);
-      await saveToFirebase(PATH.PHONG, []);
-      await saveToFirebase(PATH.TEN, []);
-      await saveToFirebase(PATH.MANUAL, {});
-      renderLeft();
-      renderStock();
-      // Sau khi reset dữ liệu, hiển thị màn hình khóa lại
-      showLogin();
-      alert('🗑️ Đã xóa toàn bộ dữ liệu và reset màn hình khóa.');
-    });
-
-    // ---------- POPUP close handlers ----------
+    // Close popups
     closePopupBtn.addEventListener('click', () => popupDetail.style.display = 'none');
     closeXuatBtn.addEventListener('click', () => xuatPopup.style.display = 'none');
-    // click outside to close if clicking on .popup root
-    document.addEventListener('click', (ev) => {
-      if (ev.target && ev.target.classList && ev.target.classList.contains('popup')) {
-        ev.target.style.display = 'none';
-      }
-    });
+
+    // ESC key close
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
         if (popupDetail.style.display === 'block') popupDetail.style.display = 'none';
@@ -647,13 +839,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       await addTen(val.trim());
     });
 
-    // ---------- Open Xuất popup ----------
     xuatBtn.addEventListener('click', async () => {
+      console.log('Nút xuất hàng được click'); // Thêm dòng này để debug
+      
       await loadPhongVaTen();
-      // populate table
+      // populate table - CHỈ lấy hàng còn tồn kho
       const map = getCurrentStockMap();
       xuatTableBody.innerHTML = '';
-      const arr = Object.values(map);
+      
+      // Lọc chỉ những hàng còn tồn kho (qtyReal > 0)
+      const arr = Object.values(map).filter(it => (it.qtyReal || 0) > 0);
+      
+      if (arr.length === 0) {
+        alert('Không có hàng tồn kho để xuất.');
+        return;
+      }
+      
       arr.forEach((it, idx) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -665,105 +866,267 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
         xuatTableBody.appendChild(tr);
       });
+      
       xuatPopup.style.display = 'block';
+      console.log('Popup xuất hàng đã hiển thị'); // Debug
     });
 
-    // ---------- Confirm XUẤT HÀNG ----------
-    confirmXuatBtn.addEventListener('click', async () => {
-      const phongVal = chonPhong.value || 'Chưa chọn';
-      const nguoiVal = tenNhanInput.value || 'Không rõ';
-      const inputs = Array.from(document.querySelectorAll('#xuatTable .slxuat'));
-      const xuatList = [];
-      inputs.forEach(inp => {
-        const qty = parseNumberFlexible(inp.value);
-        if (qty > 0) {
-          xuatList.push({ name: inp.dataset.name, unit: inp.dataset.unit, qty });
-        }
-      });
-      if (xuatList.length === 0) {
-        alert('Chưa nhập số lượng xuất.');
-        return;
-      }
-
-      // update manual stock map
-      const map = getCurrentStockMap();
-      xuatList.forEach(x => {
-        const key = `${x.name}___${x.unit}`;
-        if (!map[key]) return;
-        map[key].qtyReal = Math.max(0, Number(map[key].qtyReal) - Number(x.qty));
-        map[key].amount = map[key].qtyReal * (Number(map[key].price) || 0);
-      });
-      // save updated map to PATH.MANUAL
-      manualStock = map;
-      await saveToFirebase(PATH.MANUAL, map);
-      renderStock();
-
-      // save history - FIX: Thống nhất array cho cả Firebase và local
-      const historyItem = {
-        id: Date.now(),
-        phong: phongVal,
-        nguoi: nguoiVal,
-        ngay: new Date().toLocaleString('vi-VN'),
-        ngayISO: new Date().toISOString(),
-        danhSach: xuatList
-      };
-
-      if (useLocalStorage) {
-        const history = loadLocal(PATH.HISTORY, []);
-        history.push(historyItem);
-        saveLocal(PATH.HISTORY, history);
-      } else {
-        // Firebase: push tạo object, nhưng ta sẽ lưu như array bằng set (append)
-        const historyRef = ref(db, PATH.HISTORY);
-        const currentHistory = await get(historyRef);
-        const historyArray = currentHistory.val() ? Object.values(currentHistory.val()) : [];
-        historyArray.push(historyItem);
-        await set(historyRef, historyArray);  // Sửa: Dùng set với array thay vì push
-      }
-
-      alert('✅ Đã xuất hàng và lưu lịch sử.');
-      xuatPopup.style.display = 'none';
-    });
-
-    // ---------- View history (grouped by phong) with filter (default grouped view) ----------
-    viewPhieuBtn.addEventListener('click', async () => {
+    lichSuNhanBtn.addEventListener('click', async () => {
       let allHistory;
       if (useLocalStorage) {
         allHistory = loadLocal(PATH.HISTORY, []);
       } else {
         const historyData = await loadFromFirebase(PATH.HISTORY, []);
-        // FIX: Nếu Firebase lưu như object (từ push cũ), chuyển thành array
         allHistory = Array.isArray(historyData) ? historyData : Object.values(historyData || {});
       }
-      if (!Array.isArray(allHistory) || !allHistory.length) return alert('Chưa có lịch sử xuất hàng.');
-      const phongList = [...new Set(allHistory.map(h => h.phong))].sort();
-      const nguoiList = [...new Set(allHistory.map(h => h.nguoi))].sort();
+      if (!Array.isArray(allHistory) || !allHistory.length) return alert('Chưa có lịch sử nhận hàng.');
+
+      // Group by date (ngayISO), sort descending (mới nhất đầu)
+      const groupedByDate = {};
+      allHistory.forEach(h => {
+        const dateKey = h.ngayISO ? h.ngayISO.split('T')[0] : new Date().toISOString().split('T')[0];
+        if (!groupedByDate[dateKey]) groupedByDate[dateKey] = [];
+        groupedByDate[dateKey].push(h);
+      });
+
+      const dates = Object.keys(groupedByDate).sort((a, b) => new Date(b) - new Date(a)); // Mới nhất đầu
 
       // build popup
       const popup = document.createElement('div');
       popup.className = 'popup';
       popup.style.display = 'block';
       popup.innerHTML = `
-        <header>📋 Lịch sử xuất hàng <span id="closeHis">✖</span></header>
-        <div class="body" style="padding:10px;max-height:80vh;overflow:auto;">
-          <div id="filterBar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-            <label>📅 Từ: <input type="date" id="fromDate"></label>
-            <label>Đến: <input type="date" id="toDate"></label>
-            <label>🏢 Phòng:
-              <select id="filterPhong"><option value="">-- Tất cả --</option>${phongList.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select>
-            </label>
-            <label>👤 Nhân viên:
-              <select id="filterNguoi"><option value="">-- Tất cả --</option>${nguoiList.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
-            </label>
+      <header>
+        📅 Lịch sử nhận hàng
+        <button id="closeLichSuNhan" class="popup-close-btn" title="Đóng">✖</button>
+      </header>
+      <div class="body" style="padding:10px;max-height:80vh;overflow:auto;">
+        <div id="lichSuContainer"></div>
+      </div>
+    `;
+      document.body.appendChild(popup);
+      const container = document.getElementById('lichSuContainer');
+      document.getElementById('closeLichSuNhan').addEventListener('click', () => popup.remove());
+
+      // Render dates accordion
+      let html = '';
+      dates.forEach(dateKey => {
+        const dateStr = new Date(dateKey).toLocaleDateString('vi-VN');
+        const historyForDate = groupedByDate[dateKey];
+        
+        // Group by phong for this date
+        const groupedByPhong = {};
+        historyForDate.forEach(h => {
+          if (!groupedByPhong[h.phong]) groupedByPhong[h.phong] = [];
+          groupedByPhong[h.phong].push(h);
+        });
+
+        html += `
+          <div class="date-item">
+            <div class="date-header" onclick="this.nextElementSibling.classList.toggle('active'); this.querySelector('.arrow').innerText = this.nextElementSibling.classList.contains('active') ? '▼' : '▶';">
+              📅 ${dateStr} <span class="arrow">▶</span>
+            </div>
+            <div class="date-content">
+        `;
+
+        // Render phong accordion for this date
+        Object.keys(groupedByPhong).sort().forEach(phong => {
+          const arr = groupedByPhong[phong];
+          
+          // Group by nhan vien for this phong
+          const groupedByNhanVien = {};
+          arr.forEach(h => {
+            if (!groupedByNhanVien[h.nguoi]) groupedByNhanVien[h.nguoi] = [];
+            groupedByNhanVien[h.nguoi].push(h);
+          });
+
+          html += `
+            <div class="phong-item">
+              <div class="phong-header" onclick="this.nextElementSibling.classList.toggle('active'); this.querySelector('.arrow').innerText = this.nextElementSibling.classList.contains('active') ? '▼' : '▶';">
+                🏢 ${esc(phong)} <span class="arrow">▶</span>
+              </div>
+              <div class="phong-content">
+          `;
+
+          // Render nhan vien table
+          Object.keys(groupedByNhanVien).sort().forEach(nhanVien => {
+            const nhanVienHistory = groupedByNhanVien[nhanVien];
+            
+            html += `
+              <div style="margin: 8px 0;">
+                <div style="font-weight: 600; padding: 6px 12px; background: #f0f0f0;">👤 ${esc(nhanVien)}</div>
+                <table class="nhanvien-table">
+                  <thead>
+                    <tr>
+                      <th style="width:50%">Tên vật tư</th>
+                      <th style="width:20%">Thời gian nhận</th>
+                      <th style="width:15%">ĐVT</th>
+                      <th style="width:15%">Số lượng</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+            `;
+
+            // Collect all items for this nhan vien
+            const allItems = [];
+            nhanVienHistory.forEach(h => {
+              (h.danhSach || []).forEach(it => {
+                allItems.push({
+                  name: it.name,
+                  unit: it.unit,
+                  qty: it.qty,
+                  time: h.ngay // Sử dụng thời gian từ lịch sử
+                });
+              });
+            });
+
+            allItems.forEach((it, idx) => {
+              html += `
+                <tr>
+                  <td>${esc(it.name)}</td>
+                  <td>${esc(it.time)}</td>
+                  <td>${esc(it.unit)}</td>
+                  <td class="num">${it.qty}</td>
+                </tr>
+              `;
+            });
+
+            html += `
+                  </tbody>
+                </table>
+              </div>
+            `;
+          });
+
+          html += `
+              </div>
+            </div>
+          `;
+        });
+
+        html += `
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html || '<div style="color:#777; text-align:center; padding:20px;">Chưa có lịch sử nhận hàng.</div>';
+    });
+
+    function renderPhongAccordion(historyForDate) {
+      // Group by phong
+      const groupedByPhong = {};
+      historyForDate.forEach(h => {
+        if (!groupedByPhong[h.phong]) groupedByPhong[h.phong] = [];
+        groupedByPhong[h.phong].push(h);
+      });
+
+      let html = '';
+      Object.keys(groupedByPhong).sort().forEach(phong => {
+        const arr = groupedByPhong[phong];
+        html += `
+          <div class="accordion-item">
+            <div class="accordion-header" onclick="this.nextElementSibling.classList.toggle('active'); this.querySelector('.arrow').innerText = this.nextElementSibling.classList.contains('active') ? '▼' : '▶';">
+              ${esc(phong)} <span class="arrow">▶</span>
+            </div>
+            <div class="accordion-content">
+              ${renderNhanVienAccordion(arr)}
+            </div>
+          </div>
+        `;
+      });
+      return html;
+    }
+
+    function renderNhanVienAccordion(arr) {
+      // Group by nguoi
+      const groupedByNguoi = {};
+      arr.forEach(h => {
+        if (!groupedByNguoi[h.nguoi]) groupedByNguoi[h.nguoi] = { danhSach: [] };
+        groupedByNguoi[h.nguoi].danhSach.push(...(h.danhSach || []));
+      });
+
+      let html = '';
+      Object.keys(groupedByNguoi).sort().forEach(nguoi => {
+        const items = groupedByNguoi[nguoi].danhSach;
+        const m = {};
+        items.forEach(it => {
+          const key = `${it.name}___${it.unit}`;
+          if (!m[key]) m[key] = { name: it.name, unit: it.unit, tong: 0 };
+          m[key].tong += Number(it.qty) || 0;
+        });
+
+        html += `
+          <div class="accordion-subheader" onclick="this.nextElementSibling.classList.toggle('active'); this.querySelector('.arrow').innerText = this.nextElementSibling.classList.contains('active') ? '▼' : '▶';">
+            ${esc(nguoi)} <span class="arrow">▶</span>
+          </div>
+          <div class="sub-content">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead><tr><th>Hàng</th><th>SL</th></tr></thead><tbody>
+        `;
+        Object.values(m).forEach(it => {
+          html += `<tr><td>${esc(it.name)} (${esc(it.unit)})</td><td class="num">${it.tong}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+      });
+      return html;
+    }
+
+    viewPhieuBtn.addEventListener('click', async () => {
+      let allHistory;
+      if (useLocalStorage) {
+        allHistory = loadLocal(PATH.HISTORY, []);
+      } else {
+        const historyData = await loadFromFirebase(PATH.HISTORY, []);
+        allHistory = Array.isArray(historyData) ? historyData : Object.values(historyData || {});
+      }
+      if (!Array.isArray(allHistory) || !allHistory.length) return alert('Chưa có lịch sử xuất hàng.');
+
+      // build popup
+      const popup = document.createElement('div');
+      popup.className = 'popup';
+      popup.style.display = 'block';
+      popup.innerHTML = `
+      <header>
+        📋 Danh sách nhận
+        <button id="closeHis" class="popup-close-btn" title="Đóng">✖</button>
+      </header>
+      <div class="body">
+          <div class="filter-bar">
+            <div class="filter-group">
+              <label>📅 Từ:</label>
+              <input type="date" id="fromDate">
+            </div>
+            <div class="filter-group">
+              <label>Đến:</label>
+              <input type="date" id="toDate">
+            </div>
+            <div class="filter-group">
+              <label>🏢 Phòng:</label>
+              <select id="filterPhong">
+                <option value="">-- Tất cả --</option>
+                ${[...new Set(allHistory.map(h => h.phong))].sort().map(p => 
+                  `<option value="${esc(p)}">${esc(p)}</option>`
+                ).join('')}
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>👤 NV:</label>
+              <select id="filterNguoi">
+                <option value="">-- Tất cả --</option>
+                ${[...new Set(allHistory.map(h => h.nguoi))].sort().map(n => 
+                  `<option value="${esc(n)}">${esc(n)}</option>`
+                ).join('')}
+              </select>
+            </div>
             <button id="btnLoc" class="main-btn">🔍 Lọc</button>
           </div>
           <div id="hisContainer"></div>
         </div>
       `;
       document.body.appendChild(popup);
-      document.getElementById('closeHis').addEventListener('click', ()=> popup.remove());
+      document.getElementById('closeHis').addEventListener('click', () => popup.remove());
 
-      // parsing date helper within this scope
       function applyFilterAndRender() {
         const fromVal = document.getElementById('fromDate').value;
         const toVal = document.getElementById('toDate').value;
@@ -782,7 +1145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           return true;
         });
 
-        // grouped view (phòng -> item map)
+        // Group by phong
         const grouped = {};
         filtered.forEach(h => {
           if (!grouped[h.phong]) grouped[h.phong] = [];
@@ -790,41 +1153,222 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         let html = '';
-        Object.entries(grouped).forEach(([phong, arr]) => {
-          html += `<div class="phong-block" style="margin-bottom:18px;">
-            <h4 style="background:#2196f3;color:#fff;padding:6px 10px;border-radius:4px;">🏢 ${esc(phong)}</h4>
-            <table style="width:100%;border-collapse:collapse;margin-top:6px;">
-              <thead><tr style="background:#f0f0f0;text-align:left;">
-                <th style="padding:6px;">Tên vật tư</th><th style="width:100px;padding:6px;">Tổng SL</th><th style="padding:6px;">Chi tiết nhận</th>
-              </tr></thead><tbody>`;
-          // items map
-          const m = {};
+        Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).forEach(([phong, arr]) => {
+          // Tính tổng số lượng theo tên nhân viên cho mỗi vật tư
+          const itemsMap = {};
           arr.forEach(h => {
             (h.danhSach || []).forEach(it => {
               const key = `${it.name}___${it.unit}`;
-              if (!m[key]) m[key] = { name: it.name, unit: it.unit, tong: 0, chiTiet: [] };
-              m[key].tong += Number(it.qty) || 0;
-              m[key].chiTiet.push({ ngay: h.ngay, nguoi: h.nguoi, sl: it.qty, ngayISO: h.ngayISO });
+              if (!itemsMap[key]) {
+                itemsMap[key] = {
+                  name: it.name,
+                  unit: it.unit,
+                  nhanVienList: {}
+                };
+              }
+              // Cộng dồn theo nhân viên
+              if (!itemsMap[key].nhanVienList[h.nguoi]) {
+                itemsMap[key].nhanVienList[h.nguoi] = 0;
+              }
+              itemsMap[key].nhanVienList[h.nguoi] += Number(it.qty) || 0;
             });
           });
 
-          Object.values(m).forEach(it => {
-            const details = it.chiTiet.map(c => `• ${esc(c.ngay)} – ${esc(c.nguoi)}: ${c.sl}`).join('<br>');
-            html += `<tr><td style="padding:6px;border-bottom:1px solid #eee;">${esc(it.name)} (${esc(it.unit)})</td>
-              <td style="padding:6px;border-bottom:1px solid #eee;text-align:center;">${it.tong}</td>
-              <td style="padding:6px;border-bottom:1px solid #eee;">${details}</td></tr>`;
+          html += `
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="this.nextElementSibling.classList.toggle('active'); this.querySelector('.arrow').innerText = this.nextElementSibling.classList.contains('active') ? '▼' : '▶';">
+                🏢 ${esc(phong)} <span class="arrow">▶</span>
+              </div>
+              <div class="accordion-content">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:50%">Tên vật tư</th>
+                      <th style="width:30%">Chi tiết nhận</th>
+                      <th style="width:20%">Tổng SL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+          `;
+
+          Object.values(itemsMap).forEach(it => {
+            // Format chi tiết nhận: "quyết 5 - hà 6 - ngân 8"
+            const chiTiet = Object.entries(it.nhanVienList)
+              .map(([nv, sl]) => `${esc(nv)} ${sl}`)
+              .join(' - ');
+            
+            const tongSL = Object.values(it.nhanVienList).reduce((sum, sl) => sum + sl, 0);
+
+            html += `
+              <tr>
+                <td>${esc(it.name)} (${esc(it.unit)})</td>
+                <td>${chiTiet}</td>
+                <td class="num">${tongSL}</td>
+              </tr>
+            `;
           });
 
-          html += '</tbody></table></div>';
+          html += `
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
         });
 
-        document.getElementById('hisContainer').innerHTML = html || '<div style="color:#777">Không có dữ liệu phù hợp.</div>';
+        document.getElementById('hisContainer').innerHTML = html || '<div style="color:#777; text-align:center; padding:20px;">Không có dữ liệu phù hợp.</div>';
       }
 
       document.getElementById('btnLoc').addEventListener('click', applyFilterAndRender);
       applyFilterAndRender(); // initial render
     });
 
+// ---------- THÊM EVENT LISTENER CHO TOGGLE SIDEBAR ----------
+if (toggleSidebarBtn) {
+  toggleSidebarBtn.addEventListener('click', () => {
+    const sidebar = document.getElementById('left');
+    const mainContent = document.getElementById('center');
+    
+    console.log('Toggle sidebar clicked'); // Debug
+    
+    sidebar.classList.toggle('sidebar-hidden');
+    
+    // Đổi text nút cho user-friendly
+    if (sidebar.classList.contains('sidebar-hidden')) {
+      toggleSidebarBtn.textContent = '☰ Hiện danh sách';
+      toggleSidebarBtn.title = 'Hiện danh sách phiếu';
+      // Trên mobile, mở rộng center khi sidebar ẩn
+      if (window.innerWidth <= 768) {
+        mainContent.style.height = '100%';
+      }
+    } else {
+      toggleSidebarBtn.textContent = '☰ Ẩn danh sách';
+      toggleSidebarBtn.title = 'Ẩn danh sách phiếu';
+      // Trên mobile, reset height khi sidebar hiện
+      if (window.innerWidth <= 768) {
+        mainContent.style.height = '';
+      }
+    }
+  });
+  
+  // Initial state: Mặc định ẨN sidebar khi truy cập
+  document.getElementById('left').classList.add('sidebar-hidden');
+  toggleSidebarBtn.textContent = '☰ Hiện danh sách';
+  toggleSidebarBtn.title = 'Hiện danh sách phiếu';
+  
+  // Trên mobile, mở rộng center khi sidebar ẩn
+  if (window.innerWidth <= 768) {
+    document.getElementById('center').style.height = '100%';
+  }
+}
+
+// ---------- EVENT LISTENER CHO CLEAR ALL DATA ----------
+clearBtn.addEventListener('click', async () => {
+  if (!confirm('⚠️ Xóa toàn bộ dữ liệu? Không thể khôi phục! Bao gồm phiếu nhập, tồn kho, lịch sử xuất, phòng ban, và người nhận.')) {
+    return; // Hủy nếu không confirm
+  }
+
+  try {
+    // Reset state
+    allData = {};
+    manualStock = {};
+    
+    // Xóa các path chính (set empty)
+    await saveToFirebase(PATH.EXCEL, {});     // Xóa phiếu Excel
+    await saveToFirebase(PATH.MANUAL, {});    // Xóa chỉnh sửa tay
+    await saveToFirebase(PATH.HISTORY, []);   // Xóa lịch sử xuất (array empty)
+    await saveToFirebase(PATH.PHONG, []);     // Xóa danh sách phòng ban (nếu muốn)
+    await saveToFirebase(PATH.TEN, []);       // Xóa danh sách người nhận (nếu muốn)
+    
+    console.log('✅ Đã xóa toàn bộ dữ liệu thành công!');
+    alert('Đã xóa toàn bộ dữ liệu! Trang sẽ reload để cập nhật.');
+    
+    // Render lại UI
+    renderLeft(searchCodesInput.value);
+    renderStock();
+    
+    // Optional: Reload trang để sync Firebase (nếu multi-device)
+    // location.reload();  // Uncomment nếu cần
+  } catch (e) {
+    console.error('Lỗi xóa dữ liệu:', e);
+    alert('Lỗi khi xóa: ' + e.message + '. Kiểm tra kết nối Firebase.');
+  }
+});
+// ---------- ✅ THÊM EVENT LISTENER CHO NÚT THÊM SẢN PHẨM ----------
+if (addProductBtn) {
+  addProductBtn.addEventListener('click', () => {
+    addProductPopup.style.display = 'block';
+    // Reset form
+    newProductName.value = '';
+    newProductUnit.value = '';
+    newProductQty.value = '';
+    newProductPrice.value = '';
+    addProductError.textContent = '';
+  });
+
+  closeAddProductBtn.addEventListener('click', () => {
+    addProductPopup.style.display = 'none';
+  });
+
+  // Đóng popup khi click ngoài
+  addProductPopup.addEventListener('click', (e) => {
+    if (e.target === addProductPopup) {
+      addProductPopup.style.display = 'none';
+    }
+  });
+
+  saveNewProductBtn.addEventListener('click', async () => {
+    const name = newProductName.value.trim();
+    const unit = newProductUnit.value.trim();
+    const qty = parseNumberFlexible(newProductQty.value);
+    const price = parseNumberFlexible(newProductPrice.value);
+
+    // Validation
+    if (!name) {
+      addProductError.textContent = 'Tên sản phẩm không được để trống!';
+      newProductName.focus();
+      return;
+    }
+    if (!unit) {
+      addProductError.textContent = 'Đơn vị không được để trống!';
+      newProductUnit.focus();
+      return;
+    }
+    if (qty <= 0) {
+      addProductError.textContent = 'Số lượng phải lớn hơn 0!';
+      newProductQty.focus();
+      return;
+    }
+    if (price <= 0) {
+      addProductError.textContent = 'Đơn giá phải lớn hơn 0!';
+      newProductPrice.focus();
+      return;
+    }
+
+    // Tạo key và object mới
+    const key = `${name}___${unit}`;
+    const newProduct = {
+      name,
+      unit,
+      qtyReal: qty,
+      price,
+      amount: qty * price
+    };
+
+    // Thêm vào manualStock
+    manualStock[key] = newProduct;
+
+    // Lưu vào Firebase
+    await saveToFirebase(PATH.MANUAL, manualStock);
+
+    // Đóng popup và thông báo
+    addProductPopup.style.display = 'none';
+    alert(`✅ Đã thêm sản phẩm "${name} (${unit})" với tồn kho ${qty} (giá ${price} VNĐ)!`);
+
+    // Render lại stock
+    renderStock();
+  });
+}
     // ---------- initial render ----------
     allData = await loadFromFirebase(PATH.EXCEL, {});
     manualStock = await loadFromFirebase(PATH.MANUAL, {});
@@ -834,7 +1378,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listen to changes (if not fallback)
     if (!useLocalStorage) {
-      listenToFirebase(PATH.EXCEL, (data) => { allData = data; renderLeft(); renderStock(); });
+      listenToFirebase(PATH.EXCEL, (data) => { allData = data; renderLeft(searchCodesInput.value); renderStock(); });
       listenToFirebase(PATH.MANUAL, (data) => { manualStock = data; renderStock(); });
     }
 
@@ -850,4 +1394,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     };
   }
+
+  // Khởi động ngay
+  initApp();
 });
