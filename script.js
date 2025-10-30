@@ -95,7 +95,85 @@ const addProductError = document.getElementById('addProductError');
 
     // ---------- THÊM CHO TOGGLE SIDEBAR ----------
     const toggleSidebarBtn = document.getElementById('toggleSidebar');
+// ---------- LOCK SCREEN FUNCTIONALITY ----------
+const lockScreen = document.getElementById('lockScreen');
+const lockUsername = document.getElementById('lockUsername');
+const lockPassword = document.getElementById('lockPassword');
+const lockLoginBtn = document.getElementById('lockLoginBtn');
+const lockError = document.getElementById('lockError');
+const logoutBtn = document.getElementById('logoutBtn');
 
+// Thông tin đăng nhập
+const VALID_CREDENTIALS = {
+  username: 'anh',
+  password: '123123'
+};
+
+// Kiểm tra trạng thái đăng nhập
+function checkAuth() {
+  const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+  return isLoggedIn;
+}
+
+// Hiển thị/ẩn màn hình khóa
+function toggleLockScreen(show) {
+  if (show) {
+    lockScreen.style.display = 'flex';
+    logoutBtn.classList.add('hidden');
+  } else {
+    lockScreen.style.display = 'none';
+    logoutBtn.classList.remove('hidden');
+  }
+}
+
+// Xử lý đăng nhập
+function handleLogin() {
+  const username = lockUsername.value.trim();
+  const password = lockPassword.value.trim();
+
+  if (username === VALID_CREDENTIALS.username && password === VALID_CREDENTIALS.password) {
+    // Đăng nhập thành công
+    localStorage.setItem('isLoggedIn', 'true');
+    lockError.textContent = '';
+    toggleLockScreen(false);
+  } else {
+    // Đăng nhập thất bại
+    lockError.textContent = 'Tên đăng nhập hoặc mật khẩu không đúng!';
+    lockPassword.value = '';
+    lockPassword.focus();
+  }
+}
+
+// Xử lý đăng xuất
+function handleLogout() {
+  if (confirm('Bạn có chắc chắn muốn đăng xuất?')) {
+    localStorage.setItem('isLoggedIn', 'false');
+    toggleLockScreen(true);
+    // Clear form
+    lockUsername.value = '';
+    lockPassword.value = '';
+    lockError.textContent = '';
+  }
+}
+
+// Event listeners
+lockLoginBtn.addEventListener('click', handleLogin);
+
+// Cho phép đăng nhập bằng phím Enter
+lockPassword.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    handleLogin();
+  }
+});
+
+logoutBtn.addEventListener('click', handleLogout);
+
+// Kiểm tra auth khi load trang
+if (!checkAuth()) {
+  toggleLockScreen(true);
+} else {
+  toggleLockScreen(false);
+}
     // ---------- State ----------
     let allData = {}; // mapping code -> invoice object
     let manualStock = {};
@@ -477,7 +555,7 @@ if (manualStock && typeof manualStock === 'object') {
   if (!isFilteredMode) {
     stockTbody.querySelectorAll(".delRow").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        if (confirm("Xóa sản phẩm này khỏi tồn kho? (Set SL tồn = 0)")) {
+        if (confirm("Bạn có chắc xóa sản phẩm này không?")) {
           const key = btn.closest("tr").dataset.key;
           const currentItem = getCurrentStockMap()[key];
           if (currentItem) {

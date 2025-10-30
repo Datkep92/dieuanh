@@ -36,7 +36,7 @@
 <body>
 
 <header id="mainHeader">
- <div class="header-group1">
+  <div class="header-group1">
     <!-- ✅ INPUT FILE BỌC TRONG LABEL (như button) -->
     <label for="excelInput" class="file-btn">
       📁 Chọn file
@@ -50,7 +50,10 @@
 
   <div class="header-group2">
     <button id="toggleSidebar" class="mobile-only" title="Ẩn/hiện danh sách phiếu">Danh sách</button>
-    <button id="clearBtn" title="Xóa toàn bộ dữ liệu">Xóa</button>
+    <!-- THÊM NÚT ĐĂNG XUẤT -->
+     <button id="clearBtn" title="Xóa toàn bộ dữ liệu">Xóa</button>
+    <button id="logoutBtn" class="logout-btn" title="Đăng xuất">🚪 Đăng xuất</button>
+    
   </div>
 </header>
 
@@ -214,7 +217,35 @@
       </div>
     </div>
   </div>
-
+<!-- ========== MÀN HÌNH KHÓA ========== -->
+<div id="lockScreen" class="lock-screen">
+  <div class="lock-container">
+    <div class="lock-header">
+      <div class="hospital-icon">🏥</div>
+      <h2>HỆ THỐNG QUẢN LÝ VẬT TƯ</h2>
+      <p>Bệnh viện - Khoa Gây Mê Hồi Sức</p>
+    </div>
+    
+    <div class="lock-form">
+      <div class="form-group">
+        <label for="lockUsername">Tên đăng nhập:</label>
+        <input type="text" id="lockUsername" placeholder="Nhập tên đăng nhập" autocomplete="username">
+      </div>
+      
+      <div class="form-group">
+        <label for="lockPassword">Mật khẩu:</label>
+        <input type="password" id="lockPassword" placeholder="Nhập mật khẩu" autocomplete="current-password">
+      </div>
+      
+      <button id="lockLoginBtn" class="main-btn">🔓 Mở khóa hệ thống</button>
+      <div id="lockError" class="error-message"></div>
+    </div>
+    
+    <div class="lock-footer">
+      <p>Chỉ dành cho nhân viên y tế được ủy quyền</p>
+    </div>
+  </div>
+</div>
   <!-- ✅ JS -->
   <script type="module" src="script.js"></script>
 </body>
